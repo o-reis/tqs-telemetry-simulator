@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet-telemetry-contract.example/v1/event.schema.json",
+  "title": "Event message",
+  "description": "Something that happened once to a vehicle. Telemetry carries the current fault; an event reports the moment it appeared or went away.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "event" },
+        "data": {
+          "type": "object",
+          "required": ["eventType", "severity", "faultCode", "lockState"],
+          "properties": {
+            "eventType": {
+              "description": "Known values: FAULT_RAISED, FAULT_CLEARED, LOCK_CHANGED. New values may be added in a MINOR version, so consumers must ignore values they do not know.",
+              "$ref": "envelope.schema.json#/$defs/code"
+            },
+            "severity": { "type": "string", "enum": ["INFO", "WARNING", "CRITICAL"] },
+            "faultCode": {
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "envelope.schema.json#/$defs/code" }
+              ]
+            },
+            "lockState": {
+              "oneOf": [
+                { "type": "null" },
+                { "type": "string", "enum": ["locked", "unlocked"] }
+              ]
+            },
+            "description": { "type": "string", "maxLength": 200 }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": ["eventType"],
+                "properties": { "eventType": { "enum": ["FAULT_RAISED", "FAULT_CLEARED"] } }
+              },
+              "then": {
+                "properties": {
+                  "faultCode": { "type": "string" },
+                  "lockState": { "type": "null" }
+                }
+              }
+            },
+            {
+              "if": {
+                "required": ["eventType"],
+                "properties": { "eventType": { "const": "LOCK_CHANGED" } }
+              },
+              "then": {
+                "properties": {
+                  "faultCode": { "type": "null" },
+                  "lockState": { "type": "string" }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.1.0",
+  "messageId": "8b2d4f61-7a39-4e15-8c07-3a4b5c6d7e15",
+  "type": "event",
+  "timestamp": "2026-11-10T10:20:00Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "eventType": "TILT_DETECTED",
+    "severity": "WARNING",
+    "faultCode": null,
+    "lockState": null,
+    "extraField": "unknown fields must be ignored by consumers"
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet-telemetry-contract.example/v1/response.schema.json",
+  "title": "Response message",
+  "description": "The simulator's answer to one command, linked to it by commandId.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "response" },
+        "data": {
+          "type": "object",
+          "required": ["commandId", "command", "status", "reason"],
+          "properties": {
+            "commandId": { "type": "string", "format": "uuid" },
+            "command": {
+              "description": "Known values: lock, unlock, ping. New commands may be added in a MINOR version.",
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "status": { "type": "string", "enum": ["COMPLETED", "REJECTED", "FAILED"] },
+            "reason": {
+              "description": "Why the status is not COMPLETED, null otherwise.",
+              "oneOf": [
+                { "type": "null" },
+                { "$ref": "envelope.schema.json#/$defs/code" }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": {
+                "required": ["status"],
+                "properties": { "status": { "const": "COMPLETED" } }
+              },
+              "then": { "properties": { "reason": { "type": "null" } } },
+              "else": { "properties": { "reason": { "type": "string" } } }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

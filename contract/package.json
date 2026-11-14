@@ -1,0 +1,14 @@
+{
+  "name": "fleet-telemetry-contract",
+  "version": "1.0.0",
+  "private": true,
+  "description": "JSON Schemas and examples of the fleet telemetry simulator contract, with a validation script.",
+  "type": "module",
+  "scripts": {
+    "validate": "node validate.mjs"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  }
+}

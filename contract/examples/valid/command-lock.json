@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "d1e2f3a4-b5c6-4d7e-8f90-a1b2c3d4e516",
+  "type": "command",
+  "timestamp": "2026-11-10T10:10:00Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "commandId": "11111111-2222-4333-8444-555555555516",
+    "expiresAt": "2026-11-10T10:10:30Z"
+  }
+}

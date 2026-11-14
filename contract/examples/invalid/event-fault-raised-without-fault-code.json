@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "0b8e5a62-5d6e-4c0a-8d11-2f6c0b9f4a02",
+  "type": "event",
+  "timestamp": "2026-11-10T10:05:12Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "eventType": "FAULT_RAISED",
+    "severity": "WARNING",
+    "faultCode": null,
+    "lockState": null,
+    "description": "Rear brake pad below threshold"
+  }
+}

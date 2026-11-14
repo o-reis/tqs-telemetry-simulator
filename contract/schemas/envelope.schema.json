@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet-telemetry-contract.example/v1/envelope.schema.json",
+  "title": "Message envelope",
+  "description": "Outer shape shared by every message of the contract, in both directions. The content is in 'data', defined by the schema of each message type.",
+  "type": "object",
+  "required": ["schemaVersion", "messageId", "type", "timestamp", "fleetId", "vehicleId", "data"],
+  "properties": {
+    "schemaVersion": {
+      "description": "Contract version the sender follows (semantic version).",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"
+    },
+    "messageId": {
+      "description": "Unique id of this message, used to detect duplicate deliveries.",
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["telemetry", "event", "command", "response"]
+    },
+    "timestamp": {
+      "description": "When the sender created the message, in UTC.",
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "fleetId": { "$ref": "#/$defs/identifier" },
+    "vehicleId": { "$ref": "#/$defs/identifier" },
+    "data": {
+      "description": "Content of the message, depends on 'type'.",
+      "type": "object"
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "description": "Safe to use inside an MQTT topic: no '/', '+' or '#'.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "code": {
+      "description": "Open vocabulary in UPPER_SNAKE_CASE (fault codes, reasons).",
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]*$"
+    }
+  }
+}

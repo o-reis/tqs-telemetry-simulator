@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "7d9f2c4e-3b1a-4e55-9a60-0c1f8f6b1a01",
+  "type": "telemetry",
+  "timestamp": "2026-11-10T10:00:00Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "batteryPercent": 78.5,
+    "lockState": "locked",
+    "position": { "lat": 40.6405, "lon": -8.6538 },
+    "hubId": "hub-03",
+    "faultCode": null,
+    "speedKmh": 0
+  }
+}

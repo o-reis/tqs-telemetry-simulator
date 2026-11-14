@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "4e7d9b30-1a52-4c8f-9d63-7f8a0b1c2d13",
+  "type": "event",
+  "timestamp": "2026-11-10T11:30:00Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "eventType": "FAULT_CLEARED",
+    "severity": "INFO",
+    "faultCode": "BRAKE_WEAR",
+    "lockState": null
+  }
+}

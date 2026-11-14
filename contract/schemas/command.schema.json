@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fleet-telemetry-contract.example/v1/command.schema.json",
+  "title": "Command message",
+  "description": "A command from the platform to one vehicle. The command name (lock, unlock, ping) is the last level of the topic, so the same payload shape serves all of them.",
+  "allOf": [
+    { "$ref": "envelope.schema.json" },
+    {
+      "type": "object",
+      "properties": {
+        "type": { "const": "command" },
+        "data": {
+          "type": "object",
+          "required": ["commandId"],
+          "properties": {
+            "commandId": {
+              "description": "Chosen by the platform, echoed in the response.",
+              "type": "string",
+              "format": "uuid"
+            },
+            "expiresAt": {
+              "description": "If the simulator receives the command after this time it must reject it.",
+              "type": "string",
+              "format": "date-time",
+              "pattern": "Z$"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

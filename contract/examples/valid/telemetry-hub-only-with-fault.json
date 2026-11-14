@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "9a4c1e77-5d20-4f3b-8e61-b2c3d4e5f612",
+  "type": "telemetry",
+  "timestamp": "2026-11-10T10:12:00Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "scooter-0007",
+  "data": {
+    "batteryPercent": 12,
+    "lockState": "locked",
+    "position": null,
+    "hubId": "hub-01",
+    "faultCode": "BRAKE_WEAR"
+  }
+}

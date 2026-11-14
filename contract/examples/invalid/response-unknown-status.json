@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c05",
+  "type": "response",
+  "timestamp": "2026-11-10T10:10:01Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "commandId": "e5b2a9c1-0d3f-4a8e-8b77-1c2d3e4f5a04",
+    "command": "unlock",
+    "status": "DONE",
+    "reason": null
+  }
+}

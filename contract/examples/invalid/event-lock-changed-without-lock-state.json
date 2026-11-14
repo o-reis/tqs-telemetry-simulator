@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0.0",
+  "messageId": "6c1f3a95-8e24-4d70-b3a8-5d9e0f1a2b14",
+  "type": "event",
+  "timestamp": "2026-11-10T10:10:01Z",
+  "fleetId": "fleet-01",
+  "vehicleId": "bike-0042",
+  "data": {
+    "eventType": "LOCK_CHANGED",
+    "severity": "INFO",
+    "faultCode": null,
+    "lockState": null
+  }
+}
