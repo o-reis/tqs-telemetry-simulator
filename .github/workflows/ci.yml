@@ -1,0 +1,110 @@
+# Build and test on every push and pull request; publish the image from main.
+# Same level as the platform's backend CI: build, unit and integration tests, coverage check,
+# formatting check, mutation testing (pull requests) and SonarCloud with the quality gate.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The interface contract: every valid example must pass its JSON Schema, every invalid one must fail.
+  contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contract
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: contract/package-lock.json
+
+      - name: Validate schemas and examples
+        run: |
+          npm ci
+          npm run validate
+
+  simulator:
+    runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # SonarCloud needs the full history to find new code and blame
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # verify runs the unit and integration tests, the JaCoCo check and the Spotless check
+      - name: Build and test
+        run: ./mvnw -B verify
+
+      # Mutation testing is slow, so it runs on pull requests only (and on request with -Pmutation)
+      - name: Mutation testing
+        if: github.event_name == 'pull_request'
+        run: ./mvnw -B test-compile pitest:mutationCoverage
+
+      - name: SonarCloud token missing
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN is not available (secret missing or pull request from a fork), SonarCloud analysis skipped"
+
+      # Reads the JaCoCo report written by verify. Fails the build when the quality gate fails.
+      - name: SonarCloud analysis and quality gate
+        if: >-
+          env.SONAR_TOKEN != '' &&
+          ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        run: ./mvnw -B sonar:sonar -Dsonar.qualitygate.wait=true
+
+  # Builds the image on every run; pushes it to GitHub Container Registry only from main.
+  image:
+    needs: [contract, simulator]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tags: latest and the commit SHA on main; the branch name elsewhere (built, not pushed).
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha
+            type=ref,event=branch
+            type=ref,event=pr
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
