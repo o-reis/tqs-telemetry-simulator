@@ -4,9 +4,6 @@ A separate service that simulates a fleet of light vehicles and publishes their 
 following the interface contract in [contract/](contract/README.md). Any platform that implements the
 contract can consume it.
 
-Part of the TQS group P11 project (Universidade de Aveiro, 2026); the platform lives in
-[Ria-Ride/TQS-Group-P11](https://github.com/Ria-Ride/TQS-Group-P11).
-
 ## Build and test
 
 Requires Java 21 (the Maven wrapper downloads Maven).
