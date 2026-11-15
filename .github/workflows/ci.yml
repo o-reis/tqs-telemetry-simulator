@@ -1,7 +1,6 @@
 # Build and test on every push and pull request; publish the image from main.
-# A part that has no code yet is skipped with a notice, so a green run says nothing about it.
-# Not here yet: build, tests, coverage, mutation testing and SonarCloud of the simulator
-# (added with the simulator code, once its stack is chosen).
+# Same level as the platform's backend CI: build, unit and integration tests, coverage check,
+# formatting check, mutation testing (pull requests) and SonarCloud with the quality gate.
 name: CI
 
 on:
@@ -35,15 +34,39 @@ jobs:
 
   simulator:
     runs-on: ubuntu-latest
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # SonarCloud needs the full history to find new code and blame
 
-      - name: No simulator yet
-        if: hashFiles('Dockerfile') == ''
-        run: echo "::notice::No Dockerfile yet, simulator not built or tested"
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
 
-      # Build, unit and contract tests, coverage, mutation testing and the SonarCloud quality gate
-      # are added here with the simulator code, at the same level as the platform's backend CI.
+      # verify runs the unit and integration tests, the JaCoCo check and the Spotless check
+      - name: Build and test
+        run: ./mvnw -B verify
+
+      # Mutation testing is slow, so it runs on pull requests only (and on request with -Pmutation)
+      - name: Mutation testing
+        if: github.event_name == 'pull_request'
+        run: ./mvnw -B test-compile pitest:mutationCoverage
+
+      - name: SonarCloud token missing
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN is not available (secret missing or pull request from a fork), SonarCloud analysis skipped"
+
+      # Reads the JaCoCo report written by verify. Fails the build when the quality gate fails.
+      - name: SonarCloud analysis and quality gate
+        if: >-
+          env.SONAR_TOKEN != '' &&
+          ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+        run: ./mvnw -B sonar:sonar -Dsonar.qualitygate.wait=true
 
   # Builds the image on every run; pushes it to GitHub Container Registry only from main.
   image:
@@ -57,15 +80,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: No image yet
-        if: hashFiles('Dockerfile') == ''
-        run: echo "::notice::No Dockerfile yet, no image built"
-
       - uses: docker/setup-buildx-action@v4
-        if: hashFiles('Dockerfile') != ''
 
       - uses: docker/login-action@v4
-        if: hashFiles('Dockerfile') != '' && env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -74,7 +92,6 @@ jobs:
       # Tags: latest and the commit SHA on main; the branch name elsewhere (built, not pushed).
       - id: meta
         uses: docker/metadata-action@v6
-        if: hashFiles('Dockerfile') != ''
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
@@ -84,7 +101,6 @@ jobs:
             type=ref,event=pr
 
       - uses: docker/build-push-action@v7
-        if: hashFiles('Dockerfile') != ''
         with:
           context: .
           push: ${{ env.PUBLISH == 'true' }}
