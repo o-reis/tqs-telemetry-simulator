@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
+import pt.ua.deti.tqs.p11.simulator.engine.SimulationRunner;
 
 @SpringBootTest
 class SimulatorApplicationIT {
@@ -24,5 +25,10 @@ class SimulatorApplicationIT {
     assertThat(scenario.fleetId()).isEqualTo("fleet-01");
     assertThat(scenario.hubs()).hasSizeGreaterThanOrEqualTo(2);
     assertThat(scenario.vehicles()).hasSizeGreaterThanOrEqualTo(20);
+  }
+
+  @Test
+  void applicationContext_startsTheSimulationRunner() {
+    assertThat(context.getBean(SimulationRunner.class).isRunning()).isTrue();
   }
 }

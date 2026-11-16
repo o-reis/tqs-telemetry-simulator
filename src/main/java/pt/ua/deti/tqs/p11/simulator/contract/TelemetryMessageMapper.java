@@ -27,7 +27,7 @@ public class TelemetryMessageMapper {
     this(jsonMapper, clock, UUID::randomUUID);
   }
 
-  TelemetryMessageMapper(JsonMapper jsonMapper, Clock clock, Supplier<UUID> messageIds) {
+  public TelemetryMessageMapper(JsonMapper jsonMapper, Clock clock, Supplier<UUID> messageIds) {
     this.jsonMapper = jsonMapper;
     this.clock = clock;
     this.messageIds = messageIds;
