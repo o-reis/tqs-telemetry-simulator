@@ -149,7 +149,7 @@ class ScenarioParserTest {
     assertThat(config.simulation().seed()).isEqualTo(Long.MAX_VALUE);
   }
 
-  // ---- Ranges (cycles 2 and 3) ----
+  // ---- Ranges ----
 
   @ParameterizedTest
   @ValueSource(ints = {0, 100})
@@ -250,7 +250,7 @@ class ScenarioParserTest {
         "vehicles[0].battery: must be between 0 and 100 (was 101.0)");
   }
 
-  // ---- Required fields (cycle 4) ----
+  // ---- Required fields ----
 
   private static Arguments missing(Map<String, Object> raw, String path) {
     return Arguments.of(raw, path + ": is required");
@@ -297,7 +297,7 @@ class ScenarioParserTest {
     assertRejectedWith(raw, list + ": must have at least one entry");
   }
 
-  // ---- Wrong value types (cycle 4) ----
+  // ---- Wrong value types ----
 
   private static Arguments wrongType(Map<String, Object> raw, String problem) {
     return Arguments.of(raw, problem);
@@ -346,7 +346,7 @@ class ScenarioParserTest {
     assertRejectedWith(raw, problem);
   }
 
-  // ---- Identifiers (cycle 4) ----
+  // ---- Identifiers ----
 
   @ParameterizedTest
   @ValueSource(strings = {"", "fleet/01", "fleet+01", "fleet#01", "fleet 01"})
@@ -415,7 +415,7 @@ class ScenarioParserTest {
     assertRejectedWith(raw, "vehicles[1].id: duplicate id 'bike-0001' (first used in vehicles[0])");
   }
 
-  // ---- References and types (cycle 4) ----
+  // ---- References and types ----
 
   @Test
   void parse_vehicleInAnUnknownHub_isRejectedListingTheKnownHubs() {
