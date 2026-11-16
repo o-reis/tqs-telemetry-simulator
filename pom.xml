@@ -31,6 +31,9 @@
     <!-- Set when the repository is imported in SonarCloud; the CI skips the analysis until SONAR_TOKEN exists. -->
     <sonar.organization>o-reis</sonar.organization>
     <sonar.projectKey>o-reis_tqs-telemetry-simulator</sonar.projectKey>
+    <!-- JUnit tags Surefire runs or skips; the contract profile swaps them. -->
+    <tests.groups></tests.groups>
+    <tests.excludedGroups>contract</tests.excludedGroups>
   </properties>
 
   <dependencies>
@@ -84,6 +87,17 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+
+      <!-- Contract tests (@Tag("contract")) are left out of the default unit test run; the contract
+           profile runs only them: ./mvnw test -Pcontract -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <groups>${tests.groups}</groups>
+          <excludedGroups>${tests.excludedGroups}</excludedGroups>
+        </configuration>
       </plugin>
 
       <!-- Unit tests (*Test) run in Surefire; integration tests (*IT) run apart, in Failsafe. -->
@@ -212,6 +226,14 @@
   </build>
 
   <profiles>
+    <!-- Only the contract tests: every emitted message must follow contract/schemas. -->
+    <profile>
+      <id>contract</id>
+      <properties>
+        <tests.groups>contract</tests.groups>
+        <tests.excludedGroups></tests.excludedGroups>
+      </properties>
+    </profile>
     <profile>
       <id>mutation</id>
       <build>
