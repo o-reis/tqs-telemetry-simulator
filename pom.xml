@@ -186,14 +186,16 @@
           </dependency>
         </dependencies>
         <configuration>
-          <!-- The MQTT publisher and its wiring are covered by integration tests, which PIT skips. -->
+          <!-- The MQTT publisher and its wiring, aswell as Scenario Configuration, are covered by integration tests, which PIT skips. -->
           <targetClasses>
             <param>pt.ua.deti.tqs.p11.simulator.telemetry.*</param>
             <param>pt.ua.deti.tqs.p11.simulator.contract.*</param>
+            <param>pt.ua.deti.tqs.p11.simulator.config.*</param>
             <param>pt.ua.deti.tqs.p11.simulator.mqtt.MqttClientFactory</param>
           </targetClasses>
           <excludedClasses>
             <param>pt.ua.deti.tqs.p11.simulator.SimulatorApplication</param>
+            <param>pt.ua.deti.tqs.p11.simulator.config.ScenarioConfiguration</param>
           </excludedClasses>
           <targetTests>
             <param>pt.ua.deti.tqs.p11.simulator.*</param>

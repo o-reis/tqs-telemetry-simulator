@@ -15,6 +15,7 @@ The broker connection is set with environment variables:
 | `SIMULATOR_MQTT_USERNAME` | empty | Username; empty connects without authentication |
 | `SIMULATOR_MQTT_PASSWORD` | empty | Password, used with the username |
 | `SIMULATOR_MQTT_CLIENT_ID` | generated | MQTT client id; must be unique per broker |
+| `SIMULATOR_SCENARIO_FILE` | `classpath:scenarios/ria-ride.yml` | Scenario file (hubs, vehicles, simulation parameters). Use `file:/config/scenario.yml` for a file mounted into the container |
 
 If the broker is unreachable or the connection drops, the simulator keeps retrying (from 1 s up to
 2 min between attempts) and resends what it could not deliver.
@@ -26,6 +27,23 @@ Each vehicle state becomes a contract `telemetry` message (envelope with `schema
 `fleet/{fleetId}/vehicles/{vehicleId}/telemetry`. The tests validate every built message against
 the JSON Schemas in `contract/schemas`, and an integration test reads it back from a real Mosquitto
 broker.
+
+## Scenario file
+
+YAML read at start-up; examples in `src/main/resources/scenarios/`. If the file is missing or
+breaks a rule, the simulator does not start and the log lists every problem with its field path.
+
+| Field | Meaning |
+| --- | --- |
+| `fleetId` | Fleet identifier, used in every topic and message |
+| `simulation.emissionIntervalSeconds` | Seconds between readings of a vehicle, greater than 0 |
+| `simulation.seed` | Whole number; the same seed gives the same run |
+| `simulation.faultProbability` | Chance of a fault per reading, from 0 to 1 |
+| `hubs[]` | `id`, `name`, `position` (`lat` -90 to 90, `lon` -180 to 180) |
+| `vehicles[]` | `id`, `type` (`E_BIKE` or `E_SCOOTER`), `hub` (an id from `hubs`), `battery` (0 to 100) |
+
+Identifiers match `[A-Za-z0-9_-]{1,64}` and are unique within hubs and within vehicles. The vehicle
+type is internal to the simulator and never appears in the contract messages.
 
 ## Build and test
 
