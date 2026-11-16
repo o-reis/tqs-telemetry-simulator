@@ -1,6 +1,7 @@
 package pt.ua.deti.tqs.p11.simulator.config;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 /** The scenario file breaks one or more rules. Lists every problem, not only the first. */
 public class InvalidScenarioException extends RuntimeException {
@@ -9,11 +10,20 @@ public class InvalidScenarioException extends RuntimeException {
   private final transient List<String> problems;
 
   public InvalidScenarioException(List<String> problems) {
-    super("Invalid scenario");
+    super(message(problems));
     this.problems = List.copyOf(problems);
   }
 
   public List<String> getProblems() {
     return problems;
+  }
+
+  private static String message(List<String> problems) {
+    String header =
+        "Invalid scenario ("
+            + problems.size()
+            + (problems.size() == 1 ? " problem" : " problems")
+            + "):";
+    return problems.stream().map(p -> "\n - " + p).collect(Collectors.joining("", header, ""));
   }
 }
