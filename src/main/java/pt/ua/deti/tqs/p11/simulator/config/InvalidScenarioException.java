@@ -10,27 +10,25 @@ public class InvalidScenarioException extends RuntimeException {
   private final transient List<String> problems;
 
   public InvalidScenarioException(List<String> problems) {
-    super(message(problems));
-    this.problems = List.copyOf(problems);
+    this(null, problems);
   }
 
   /**
-   * @param origin where the scenario came from, for the message (not used yet)
+   * @param origin where the scenario came from (a file name, say), or null if not known
    */
   public InvalidScenarioException(String origin, List<String> problems) {
-    this(problems);
+    super(message(origin, problems));
+    this.problems = List.copyOf(problems);
   }
 
   public List<String> getProblems() {
     return problems;
   }
 
-  private static String message(List<String> problems) {
-    String header =
-        "Invalid scenario ("
-            + problems.size()
-            + (problems.size() == 1 ? " problem" : " problems")
-            + "):";
+  private static String message(String origin, List<String> problems) {
+    String where = origin == null ? "" : " in " + origin;
+    String count = problems.size() + (problems.size() == 1 ? " problem" : " problems");
+    String header = "Invalid scenario" + where + " (" + count + "):";
     return problems.stream().map(p -> "\n - " + p).collect(Collectors.joining("", header, ""));
   }
 }

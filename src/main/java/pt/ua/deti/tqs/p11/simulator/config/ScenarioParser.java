@@ -20,7 +20,7 @@ public class ScenarioParser {
   /**
    * @throws InvalidScenarioException with every problem found, each with the path of its field
    */
-  public ScenarioConfig parse(Map<String, Object> raw) {
+  public ScenarioConfig parse(Map<?, ?> raw) {
     List<String> problems = new ArrayList<>();
 
     String fleetId = identifier(raw, "fleetId", "fleetId", problems);
