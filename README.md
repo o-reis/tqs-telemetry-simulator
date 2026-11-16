@@ -28,6 +28,27 @@ Each vehicle state becomes a contract `telemetry` message (envelope with `schema
 the JSON Schemas in `contract/schemas`, and an integration test reads it back from a real Mosquitto
 broker.
 
+## How the simulation runs
+
+At start-up the simulator begins a run that ticks every `simulation.emissionIntervalSeconds`
+(fixed rate, first tick immediately). On each tick every vehicle, in scenario order, publishes one
+telemetry message. Vehicles stay parked and locked in their hub (hub position, speed 0, battery from
+the scenario). A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once
+raised, a fault stays for the rest of the run.
+
+Fault codes this simulator raises (the contract lets each simulator define its own):
+
+| Code | Meaning |
+| --- | --- |
+| `BRAKE_WEAR` | Brakes need service |
+| `FLAT_TIRE` | A tyre is flat |
+| `BATTERY_OVERHEAT` | Battery temperature too high |
+
+**Reproducible runs.** All randomness (faults and message ids) comes from one generator seeded with
+`simulation.seed`, and all time from one injected clock. Two runs with the same seed and scenario
+publish the same sequence of messages; only the timestamps follow the real clock. The engine is
+tested without a broker and without real time.
+
 ## Scenario file
 
 YAML read at start-up; examples in `src/main/resources/scenarios/`. If the file is missing or
