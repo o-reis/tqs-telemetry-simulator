@@ -29,4 +29,13 @@ class InvalidScenarioExceptionTest {
 
     assertThat(exception.getProblems()).containsExactly("a: x", "b: y");
   }
+
+  @Test
+  void message_withOrigin_namesWhereTheScenarioCameFrom() {
+    InvalidScenarioException exception =
+        new InvalidScenarioException("scenarios/x.yml", List.of("a: first"));
+
+    assertThat(exception)
+        .hasMessage("Invalid scenario in scenarios/x.yml (1 problem):\n - a: first");
+  }
 }

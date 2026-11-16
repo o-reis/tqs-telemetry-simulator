@@ -14,6 +14,13 @@ public class InvalidScenarioException extends RuntimeException {
     this.problems = List.copyOf(problems);
   }
 
+  /**
+   * @param origin where the scenario came from, for the message (not used yet)
+   */
+  public InvalidScenarioException(String origin, List<String> problems) {
+    this(problems);
+  }
+
   public List<String> getProblems() {
     return problems;
   }
