@@ -72,6 +72,7 @@ Requires Java 21 (the Maven wrapper downloads Maven).
 
 ```bash
 ./mvnw clean verify      # unit and integration tests (need Docker), coverage, formatting
+./mvnw test -Pcontract   # contract tests only: every emitted message against contract/schemas
 ./mvnw spotless:apply    # fix formatting (Google Java Style)
 npm ci --prefix contract && npm run validate --prefix contract   # contract schemas and examples
 ```
