@@ -23,6 +23,8 @@
     <jacoco.version>0.8.16</jacoco.version>
     <pitest.version>1.30.2</pitest.version>
     <pitest-junit5.version>1.2.3</pitest-junit5.version>
+    <hivemq-mqtt-client.version>1.4.2</hivemq-mqtt-client.version>
+    <json-schema-validator.version>3.0.9</json-schema-validator.version>
     <spotless.version>3.11.0</spotless.version>
     <sonar-maven-plugin.version>5.8.0.7211</sonar-maven-plugin.version>
     <sonar.host.url>https://sonarcloud.io</sonar.host.url>
@@ -36,10 +38,34 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
     </dependency>
+    <!-- JSON of the contract messages (Jackson 3). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-jackson</artifactId>
+    </dependency>
+    <!-- MQTT client with automatic reconnect. -->
+    <dependency>
+      <groupId>com.hivemq</groupId>
+      <artifactId>hivemq-mqtt-client</artifactId>
+      <version>${hivemq-mqtt-client.version}</version>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Checks built messages against the JSON Schemas in contract/schemas. -->
+    <dependency>
+      <groupId>com.networknt</groupId>
+      <artifactId>json-schema-validator</artifactId>
+      <version>${json-schema-validator.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Real MQTT broker (Mosquitto) in integration tests (*IT). -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -160,8 +186,11 @@
           </dependency>
         </dependencies>
         <configuration>
+          <!-- The MQTT publisher and its wiring are covered by integration tests, which PIT skips. -->
           <targetClasses>
-            <param>pt.ua.deti.tqs.p11.simulator.*</param>
+            <param>pt.ua.deti.tqs.p11.simulator.telemetry.*</param>
+            <param>pt.ua.deti.tqs.p11.simulator.contract.*</param>
+            <param>pt.ua.deti.tqs.p11.simulator.mqtt.MqttClientFactory</param>
           </targetClasses>
           <excludedClasses>
             <param>pt.ua.deti.tqs.p11.simulator.SimulatorApplication</param>
