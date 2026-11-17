@@ -1,7 +1,6 @@
 package pt.ua.deti.tqs.p11.simulator.contract;
 
 import java.time.Clock;
-import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -15,15 +14,12 @@ import tools.jackson.databind.json.JsonMapper;
  * command's identifiers, and in {@code data} the command id and name, the status and the reason.
  */
 public class ResponseMessageMapper {
-
   private final JsonMapper jsonMapper;
-  private final Clock clock;
-  private final Supplier<UUID> messageIds;
+  private final ContractEnvelope envelope;
 
   public ResponseMessageMapper(JsonMapper jsonMapper, Clock clock, Supplier<UUID> messageIds) {
     this.jsonMapper = jsonMapper;
-    this.clock = clock;
-    this.messageIds = messageIds;
+    this.envelope = new ContractEnvelope(clock, messageIds);
   }
 
   public String toJson(VehicleCommand command, CommandOutcome outcome) {
@@ -33,14 +29,7 @@ public class ResponseMessageMapper {
     data.put("status", outcome.status().name());
     data.put("reason", outcome.reason());
 
-    Map<String, Object> message = new LinkedHashMap<>();
-    message.put("schemaVersion", TelemetryMessageMapper.SCHEMA_VERSION);
-    message.put("messageId", messageIds.get().toString());
-    message.put("type", "response");
-    message.put("timestamp", clock.instant().truncatedTo(ChronoUnit.MILLIS).toString());
-    message.put("fleetId", command.fleetId());
-    message.put("vehicleId", command.vehicleId());
-    message.put("data", data);
-    return jsonMapper.writeValueAsString(message);
+    return jsonMapper.writeValueAsString(
+        envelope.wrap("response", command.fleetId(), command.vehicleId(), data));
   }
 }
