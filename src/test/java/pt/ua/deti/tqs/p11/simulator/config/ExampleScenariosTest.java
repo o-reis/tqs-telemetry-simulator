@@ -7,6 +7,9 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -106,6 +109,58 @@ class ExampleScenariosTest {
     }
 
     assertThat(lastBattery).containsEntry("scooter-0008", 100.0);
+  }
+
+  @Test
+  void riaRideTrips_isTheSameFleetAsRiaRide_withTrips() throws IOException {
+    ScenarioConfig demo = load(DIR.resolve("ria-ride.yml"));
+    ScenarioConfig trips = load(DIR.resolve("ria-ride-trips.yml"));
+
+    assertThat(trips.hubs()).isEqualTo(demo.hubs());
+    assertThat(trips.vehicles()).isEqualTo(demo.vehicles());
+    assertThat(trips.simulation().tripProbability()).isPositive();
+  }
+
+  /** The demo must show movement: a vehicle reaches another hub within five minutes. */
+  @Test
+  void riaRideTrips_bringsAVehicleToAnotherHubWithinThirtyReadings() throws IOException {
+    ScenarioConfig config = load(DIR.resolve("ria-ride-trips.yml"));
+    Map<String, String> startHub =
+        config.vehicles().stream()
+            .collect(Collectors.toMap(VehicleConfig::id, VehicleConfig::hubId));
+
+    List<VehicleTelemetry> readings = run(config, 30);
+
+    assertThat(readings).anySatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED));
+    assertThat(readings)
+        .anySatisfy(
+            t -> assertThat(t.hubId()).isPresent().get().isNotEqualTo(startHub.get(t.vehicleId())));
+  }
+
+  /** Riding vehicles are in no hub: those messages must follow the contract too. */
+  @Test
+  void riaRideTrips_everyMessageOfARunFollowsTheContract() throws IOException {
+    List<VehicleTelemetry> readings = run(load(DIR.resolve("ria-ride-trips.yml")), 60);
+
+    assertThat(readings).anySatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED));
+    assertThat(readings)
+        .allSatisfy(t -> assertThat(ContractSchemas.validateTelemetry(mapper.toJson(t))).isEmpty());
+  }
+
+  private static List<VehicleTelemetry> run(ScenarioConfig config, int ticks) {
+    List<VehicleTelemetry> readings = new ArrayList<>();
+    SimulationEngine engine =
+        new SimulationEngine(
+            config,
+            telemetry -> {
+              readings.add(telemetry);
+              return CompletableFuture.completedFuture(null);
+            },
+            new Random(config.simulation().seed()));
+    for (int i = 0; i < ticks; i++) {
+      engine.tick();
+    }
+    return readings;
   }
 
   @Test
