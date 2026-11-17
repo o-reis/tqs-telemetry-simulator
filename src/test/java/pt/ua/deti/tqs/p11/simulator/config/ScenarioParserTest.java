@@ -119,7 +119,9 @@ class ScenarioParserTest {
   private static Map<String, Object> scenarioWithRates(Object drain, Object charge) {
     return withSimulation(simulationWithRates(drain, charge));
   }
-    private static Map<String, Object> scenarioWithTrips(Object tripProbability, Object rideSpeedKmh) {
+
+  private static Map<String, Object> scenarioWithTrips(
+      Object tripProbability, Object rideSpeedKmh) {
     return withSimulation(
         obj(
             "emissionIntervalSeconds",
@@ -412,7 +414,7 @@ class ScenarioParserTest {
         "simulation.tripProbability: must be between 0 and 1 (was 2.0)",
         "simulation.rideSpeedKmh: must be greater than 0 and finite (was 0.0)");
   }
-  
+
   // ---- Required fields ----
 
   private static Arguments missing(Map<String, Object> raw, String path) {

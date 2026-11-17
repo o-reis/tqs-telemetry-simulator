@@ -12,14 +12,15 @@ import org.junit.jupiter.params.provider.ValueSource;
 import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 
 /**
- * A trip is pure geometry: where a vehicle is after some seconds of riding from one hub to
- * another. No Spring, no real time, no randomness.
+ * A trip is pure geometry: where a vehicle is after some seconds of riding from one hub to another.
+ * No Spring, no real time, no randomness.
  */
 class TripTest {
   private static final double EPSILON = 1e-9;
 
   /** Estação de Aveiro and Universidade: they differ in both latitude and longitude. */
   private static final Position ORIGIN = new Position(40.6443, -8.6455);
+
   private static final Position DESTINATION = new Position(40.6304, -8.6577);
 
   private static final double DURATION_SECONDS = 120;
@@ -27,6 +28,7 @@ class TripTest {
   // ---- Distance between two points on the Earth (Haversine, radius 6371 km) ----
   /** One degree along a meridian is pi * 6371 / 180 km. */
   private static final double KM_PER_DEGREE_OF_LATITUDE = Math.PI * 6371 / 180;
+
   private static final double DISTANCE_EPSILON_KM = 0.001;
 
   private final Trip trip = new Trip(ORIGIN, DESTINATION, DURATION_SECONDS);
@@ -118,8 +120,7 @@ class TripTest {
   @ParameterizedTest
   @ValueSource(doubles = {-1, Double.NaN})
   void positionAt_invalidElapsedTime_isRejected(double seconds) {
-    assertThatThrownBy(() -> trip.positionAt(seconds))
-        .isInstanceOf(IllegalArgumentException.class);
+    assertThatThrownBy(() -> trip.positionAt(seconds)).isInstanceOf(IllegalArgumentException.class);
   }
 
   @Test
@@ -147,8 +148,7 @@ class TripTest {
   @Test
   void between_takesTheDistanceDividedByTheSpeed() {
     // At a speed equal to the distance per hour, the trip takes exactly one hour.
-    Trip oneHour =
-        Trip.between(new Position(0, 0), new Position(1, 0), KM_PER_DEGREE_OF_LATITUDE);
+    Trip oneHour = Trip.between(new Position(0, 0), new Position(1, 0), KM_PER_DEGREE_OF_LATITUDE);
 
     assertThat(oneHour.durationSeconds()).isCloseTo(3600, within(EPSILON));
   }

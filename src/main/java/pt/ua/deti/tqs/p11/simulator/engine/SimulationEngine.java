@@ -28,8 +28,8 @@ import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
  * <p>Trips: a vehicle parked and locked at a hub, without a fault, starts a trip with the
  * scenario's {@code tripProbability} after each reading. Its destination is another hub, at a
  * different place, chosen at random. During the trip it is unlocked, in no hub, at the ride speed,
- * and its position moves along the straight line between the two hubs ({@link Trip}). When the
- * trip ends it is locked at the destination hub, at that hub's exact position. A vehicle that just
+ * and its position moves along the straight line between the two hubs ({@link Trip}). When the trip
+ * ends it is locked at the destination hub, at that hub's exact position. A vehicle that just
  * arrived is always reported parked at least once before it leaves again. With a {@code
  * tripProbability} of 0 the engine draws no random number for trips, so a scenario without trips
  * publishes the same sequence as before trips existed.

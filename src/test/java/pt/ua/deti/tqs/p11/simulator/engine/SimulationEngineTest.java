@@ -335,12 +335,11 @@ class SimulationEngineTest {
 
     assertThat(readings)
         .hasSize(100)
-        .allSatisfy(
-            t -> {
-              assertThat(t.lockState()).isEqualTo(LockState.LOCKED);
-              assertThat(t.hubId()).contains("hub-01");
-              assertThat(t.position()).contains(HUB_01);
-            });
+        .allSatisfy(t -> {
+          assertThat(t.lockState()).isEqualTo(LockState.LOCKED);
+          assertThat(t.hubId()).contains("hub-01");
+          assertThat(t.position()).contains(HUB_01);
+        });
   }
 
   @Test
@@ -368,11 +367,10 @@ class SimulationEngineTest {
 
     assertThat(riding)
         .hasSizeGreaterThan(3)
-        .allSatisfy(
-            t -> {
-              assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED);
-              assertThat(t.hubId()).isEmpty();
-            });
+        .allSatisfy(t -> {
+          assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED);
+          assertThat(t.hubId()).isEmpty();
+        });
     List<Double> distancesToDestination =
         riding.stream().map(t -> degreesBetween(t.position().orElseThrow(), HUB_02)).toList();
     assertThat(distancesToDestination)
@@ -420,12 +418,11 @@ class SimulationEngineTest {
     double maxLon = FOUR_HUBS.stream().mapToDouble(h -> h.position().lon()).max().orElseThrow();
     assertThat(readings).anySatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED));
     assertThat(readings)
-        .allSatisfy(
-            t -> {
-              Position p = t.position().orElseThrow();
-              assertThat(p.lat()).isBetween(minLat, maxLat);
-              assertThat(p.lon()).isBetween(minLon, maxLon);
-            });
+        .allSatisfy(t -> {
+          Position p = t.position().orElseThrow();
+          assertThat(p.lat()).isBetween(minLat, maxLat);
+          assertThat(p.lon()).isBetween(minLon, maxLon);
+        });
   }
 
   @Test
