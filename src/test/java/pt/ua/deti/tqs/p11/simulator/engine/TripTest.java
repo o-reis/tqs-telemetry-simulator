@@ -11,7 +11,10 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 
-
+/**
+ * A trip is pure geometry: where a vehicle is after some seconds of riding from one hub to
+ * another. No Spring, no real time, no randomness.
+ */
 class TripTest {
   private static final double EPSILON = 1e-9;
 
@@ -20,6 +23,11 @@ class TripTest {
   private static final Position DESTINATION = new Position(40.6304, -8.6577);
 
   private static final double DURATION_SECONDS = 120;
+
+  // ---- Distance between two points on the Earth (Haversine, radius 6371 km) ----
+  /** One degree along a meridian is pi * 6371 / 180 km. */
+  private static final double KM_PER_DEGREE_OF_LATITUDE = Math.PI * 6371 / 180;
+  private static final double DISTANCE_EPSILON_KM = 0.001;
 
   private final Trip trip = new Trip(ORIGIN, DESTINATION, DURATION_SECONDS);
 
@@ -111,6 +119,66 @@ class TripTest {
   @ValueSource(doubles = {-1, Double.NaN})
   void positionAt_invalidElapsedTime_isRejected(double seconds) {
     assertThatThrownBy(() -> trip.positionAt(seconds))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void distanceKm_oneDegreeOfLatitude_isAbout111Km() {
+    assertThat(Trip.distanceKm(new Position(0, 0), new Position(1, 0)))
+        .isCloseTo(KM_PER_DEGREE_OF_LATITUDE, within(DISTANCE_EPSILON_KM));
+  }
+
+  @Test
+  void distanceKm_betweenTwoAveiroHubs_isAbout1Point86Km() {
+    assertThat(Trip.distanceKm(ORIGIN, DESTINATION)).isCloseTo(1.857, within(DISTANCE_EPSILON_KM));
+  }
+
+  @Test
+  void distanceKm_isTheSameInBothDirections() {
+    assertThat(Trip.distanceKm(DESTINATION, ORIGIN))
+        .isEqualTo(Trip.distanceKm(ORIGIN, DESTINATION));
+  }
+
+  @Test
+  void distanceKm_samePoint_isZero() {
+    assertThat(Trip.distanceKm(ORIGIN, ORIGIN)).isZero();
+  }
+
+  @Test
+  void between_takesTheDistanceDividedByTheSpeed() {
+    // At a speed equal to the distance per hour, the trip takes exactly one hour.
+    Trip oneHour =
+        Trip.between(new Position(0, 0), new Position(1, 0), KM_PER_DEGREE_OF_LATITUDE);
+
+    assertThat(oneHour.durationSeconds()).isCloseTo(3600, within(EPSILON));
+  }
+
+  @Test
+  void between_twiceTheSpeed_takesHalfTheTime() {
+    Trip slow = Trip.between(ORIGIN, DESTINATION, 10);
+    Trip fast = Trip.between(ORIGIN, DESTINATION, 20);
+
+    assertThat(fast.durationSeconds()).isCloseTo(slow.durationSeconds() / 2, within(EPSILON));
+  }
+
+  @Test
+  void between_keepsTheHubPositions() {
+    Trip planned = Trip.between(ORIGIN, DESTINATION, 15);
+
+    assertThat(planned.origin()).isEqualTo(ORIGIN);
+    assertThat(planned.destination()).isEqualTo(DESTINATION);
+  }
+
+  @ParameterizedTest
+  @ValueSource(doubles = {0, -5, Double.NaN, Double.POSITIVE_INFINITY})
+  void between_speedNotPositiveAndFinite_isRejected(double speedKmh) {
+    assertThatThrownBy(() -> Trip.between(ORIGIN, DESTINATION, speedKmh))
+        .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void between_sameOriginAndDestination_isRejected() {
+    assertThatThrownBy(() -> Trip.between(ORIGIN, ORIGIN, 15))
         .isInstanceOf(IllegalArgumentException.class);
   }
 
