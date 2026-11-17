@@ -68,8 +68,24 @@ public class ScenarioParser {
     Double charge =
         optionalRate(
             simulation, "chargePercentPerMinute", "simulation.chargePercentPerMinute", problems);
+    Double tripProbability =
+        optionalNumber(simulation, "tripProbability", "simulation.tripProbability", 0, problems);
+    requireBetween(tripProbability, 0, 1, "simulation.tripProbability", problems);
+    Double rideSpeed =
+        optionalNumber(
+            simulation,
+            "rideSpeedKmh",
+            "simulation.rideSpeedKmh",
+            SimulationParams.DEFAULT_RIDE_SPEED_KMH,
+            problems);
+    // Written so that NaN is rejected too, and the upper bound rejects infinity.
+    if (rideSpeed != null && !(rideSpeed > 0 && rideSpeed <= Double.MAX_VALUE)) {
+      problems.add(
+          "simulation.rideSpeedKmh: must be greater than 0 and finite (was " + rideSpeed + ")");
+    }
     return problems.size() == before
-        ? new SimulationParams(interval, seed, probability, drain, charge)
+        ? new SimulationParams(
+            interval, seed, probability, drain, charge, tripProbability, rideSpeed)
         : null;
   }
 
@@ -79,15 +95,21 @@ public class ScenarioParser {
    */
   private static Double optionalRate(
       Map<?, ?> parent, String key, String path, List<String> problems) {
-    if (parent.get(key) == null) {
-      return 0.0;
-    }
-    Double rate = number(parent, key, path, problems);
+    Double rate = optionalNumber(parent, key, path, 0, problems);
     // Written so that NaN is rejected too, and the upper bound rejects infinity.
     if (rate != null && !(rate >= 0 && rate <= Double.MAX_VALUE)) {
       problems.add(path + ": must be zero or more and finite (was " + rate + ")");
     }
     return rate;
+  }
+
+  /** Reads a number that may be left out: absent means {@code defaultValue}. */
+  private static Double optionalNumber(
+      Map<?, ?> parent, String key, String path, double defaultValue, List<String> problems) {
+    if (parent.get(key) == null) {
+      return defaultValue;
+    }
+    return number(parent, key, path, problems);
   }
 
   private static List<HubConfig> parseHubs(Map<?, ?> raw, List<String> problems) {
