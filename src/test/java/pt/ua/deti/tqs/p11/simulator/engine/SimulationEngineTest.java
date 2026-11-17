@@ -1,11 +1,13 @@
 package pt.ua.deti.tqs.p11.simulator.engine;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -30,6 +32,14 @@ class SimulationEngineTest {
 
   private static final Position HUB_01 = new Position(40.6443, -8.6455);
   private static final Position HUB_02 = new Position(40.6412, -8.6501);
+  private static final Position HUB_03 = new Position(40.6304, -8.6577);
+  private static final Position HUB_04 = new Position(40.6421, -8.6524);
+
+  private static final double TRIP_INTERVAL_SECONDS = 10;
+  private static final double RIDE_SPEED_KMH = 15;
+
+  /** 6 % per minute is exactly 1 % per ten-second reading. */
+  private static final double TRIP_DRAIN_PERCENT_PER_MINUTE = 6;
 
   private final List<VehicleTelemetry> published = new ArrayList<>();
 
@@ -249,6 +259,221 @@ class SimulationEngineTest {
 
     assertThat(first).hasSize(60).doesNotHaveDuplicates().isEqualTo(second);
     assertThat(runToJson(43)).isNotEqualTo(first);
+  }
+
+  private static final List<HubConfig> TWO_HUBS =
+      List.of(
+          new HubConfig("hub-01", "Hub one", HUB_01), new HubConfig("hub-02", "Hub two", HUB_02));
+
+  private static final List<HubConfig> FOUR_HUBS =
+      List.of(
+          new HubConfig("hub-01", "Hub one", HUB_01),
+          new HubConfig("hub-02", "Hub two", HUB_02),
+          new HubConfig("hub-03", "Hub three", HUB_03),
+          new HubConfig("hub-04", "Hub four", HUB_04));
+
+  private static final VehicleConfig BIKE_AT_HUB_01 =
+      new VehicleConfig("bike-0001", VehicleType.E_BIKE, "hub-01", 90);
+
+  private static final List<VehicleConfig> THREE_VEHICLES =
+      List.of(
+          BIKE_AT_HUB_01,
+          new VehicleConfig("scooter-0001", VehicleType.E_SCOOTER, "hub-03", 80),
+          new VehicleConfig("bike-0002", VehicleType.E_BIKE, "hub-04", 70));
+
+  /** No charging, so a parked vehicle keeps its battery and only riding changes it. */
+  private static ScenarioConfig tripScenario(
+      double tripProbability,
+      double faultProbability,
+      List<HubConfig> hubs,
+      List<VehicleConfig> vehicles) {
+    return new ScenarioConfig(
+        "fleet-01",
+        new SimulationParams(
+            TRIP_INTERVAL_SECONDS,
+            7,
+            faultProbability,
+            TRIP_DRAIN_PERCENT_PER_MINUTE,
+            0,
+            tripProbability,
+            RIDE_SPEED_KMH),
+        hubs,
+        vehicles);
+  }
+
+  private static List<VehicleTelemetry> alwaysRidingBike(int ticks) {
+    return run(tripScenario(1, 0, TWO_HUBS, List.of(BIKE_AT_HUB_01)), ticks);
+  }
+
+  /**
+   * The readings of the first trip: every unlocked reading, then the locked reading at the
+   * destination.
+   */
+  private static List<VehicleTelemetry> firstTrip(List<VehicleTelemetry> readings) {
+    int start = indexOfLockState(readings, LockState.UNLOCKED, 0);
+    int end = indexOfLockState(readings, LockState.LOCKED, start);
+    return readings.subList(start, end + 1);
+  }
+
+  private static int indexOfLockState(List<VehicleTelemetry> readings, LockState state, int from) {
+    for (int i = from; i < readings.size(); i++) {
+      if (readings.get(i).lockState() == state) {
+        return i;
+      }
+    }
+    throw new AssertionError("No " + state + " reading from index " + from);
+  }
+
+  private static double degreesBetween(Position a, Position b) {
+    return Math.hypot(a.lat() - b.lat(), a.lon() - b.lon());
+  }
+
+  @Test
+  void tripProbabilityZero_vehiclesNeverLeaveTheirHub() {
+    List<VehicleTelemetry> readings =
+        run(tripScenario(0, 0, TWO_HUBS, List.of(BIKE_AT_HUB_01)), 100);
+
+    assertThat(readings)
+        .hasSize(100)
+        .allSatisfy(
+            t -> {
+              assertThat(t.lockState()).isEqualTo(LockState.LOCKED);
+              assertThat(t.hubId()).contains("hub-01");
+              assertThat(t.position()).contains(HUB_01);
+            });
+  }
+
+  @Test
+  void firstReading_isStillTheParkedStateOfTheScenario_evenWhenTripsAlwaysStart() {
+    VehicleTelemetry first = alwaysRidingBike(1).get(0);
+
+    assertThat(first.lockState()).isEqualTo(LockState.LOCKED);
+    assertThat(first.hubId()).contains("hub-01");
+  }
+
+  @Test
+  void leavingAHub_theVehicleIsUnlockedInNoHubAtTheRideSpeed() {
+    VehicleTelemetry leaving = alwaysRidingBike(2).get(1);
+
+    assertThat(leaving.lockState()).isEqualTo(LockState.UNLOCKED);
+    assertThat(leaving.hubId()).isEmpty();
+    assertThat(leaving.position()).contains(HUB_01);
+    assertThat(leaving.speedKmh()).contains(RIDE_SPEED_KMH);
+  }
+
+  @Test
+  void duringATrip_thePositionMovesGraduallyTowardsTheDestinationHub() {
+    List<VehicleTelemetry> trip = firstTrip(alwaysRidingBike(40));
+    List<VehicleTelemetry> riding = trip.subList(0, trip.size() - 1);
+
+    assertThat(riding)
+        .hasSizeGreaterThan(3)
+        .allSatisfy(
+            t -> {
+              assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED);
+              assertThat(t.hubId()).isEmpty();
+            });
+    List<Double> distancesToDestination =
+        riding.stream().map(t -> degreesBetween(t.position().orElseThrow(), HUB_02)).toList();
+    assertThat(distancesToDestination)
+        .isSortedAccordingTo(Comparator.reverseOrder())
+        .doesNotHaveDuplicates();
+  }
+
+  @Test
+  void aTrip_lastsTheDistanceBetweenTheHubsAtTheRideSpeed() {
+    double durationSeconds = Trip.between(HUB_01, HUB_02, RIDE_SPEED_KMH).durationSeconds();
+
+    List<VehicleTelemetry> trip = firstTrip(alwaysRidingBike(40));
+
+    // One unlocked reading per started interval of the trip, then the arrival.
+    assertThat(trip).hasSize((int) Math.ceil(durationSeconds / TRIP_INTERVAL_SECONDS) + 1);
+  }
+
+  @Test
+  void whenATripEnds_theVehicleIsLockedAtTheDestinationHubWithItsExactPosition() {
+    VehicleTelemetry arrival = firstTrip(alwaysRidingBike(40)).getLast();
+
+    assertThat(arrival.lockState()).isEqualTo(LockState.LOCKED);
+    assertThat(arrival.hubId()).contains("hub-02");
+    assertThat(arrival.position()).contains(HUB_02);
+    assertThat(arrival.speedKmh()).contains(0.0);
+  }
+
+  @Test
+  void ridingVehicle_drainsOneIntervalOfTheDrainRatePerReading() {
+    List<VehicleTelemetry> trip = firstTrip(alwaysRidingBike(40));
+
+    // Parked without charging until it leaves, then 1 % less per reading.
+    for (int i = 0; i < trip.size(); i++) {
+      assertThat(trip.get(i).batteryPercent()).isCloseTo(90.0 - i, within(1e-9));
+    }
+  }
+
+  @Test
+  void withSeveralHubs_positionsStayInsideTheAreaOfTheHubs() {
+    List<VehicleTelemetry> readings = run(tripScenario(0.3, 0, FOUR_HUBS, THREE_VEHICLES), 500);
+
+    double minLat = FOUR_HUBS.stream().mapToDouble(h -> h.position().lat()).min().orElseThrow();
+    double maxLat = FOUR_HUBS.stream().mapToDouble(h -> h.position().lat()).max().orElseThrow();
+    double minLon = FOUR_HUBS.stream().mapToDouble(h -> h.position().lon()).min().orElseThrow();
+    double maxLon = FOUR_HUBS.stream().mapToDouble(h -> h.position().lon()).max().orElseThrow();
+    assertThat(readings).anySatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.UNLOCKED));
+    assertThat(readings)
+        .allSatisfy(
+            t -> {
+              Position p = t.position().orElseThrow();
+              assertThat(p.lat()).isBetween(minLat, maxLat);
+              assertThat(p.lon()).isBetween(minLon, maxLon);
+            });
+  }
+
+  @Test
+  void withSeveralHubs_aParkedVehicleIsAlwaysAtThePositionOfItsHub() {
+    Map<String, Position> hubPositions =
+        FOUR_HUBS.stream().collect(Collectors.toMap(HubConfig::id, HubConfig::position));
+
+    List<VehicleTelemetry> readings = run(tripScenario(0.3, 0, FOUR_HUBS, THREE_VEHICLES), 500);
+
+    List<VehicleTelemetry> parked = readings.stream().filter(t -> t.hubId().isPresent()).toList();
+    assertThat(parked)
+        .allSatisfy(t -> assertThat(t.position()).contains(hubPositions.get(t.hubId().get())));
+    // Every hub is reached at least once, so trips really end at hubs other than the start.
+    assertThat(parked)
+        .extracting(t -> t.hubId().get())
+        .contains("hub-01", "hub-02", "hub-03", "hub-04");
+  }
+
+  @Test
+  void faultyVehicle_neverStartsATrip() {
+    assertThat(run(tripScenario(1, 1, TWO_HUBS, List.of(BIKE_AT_HUB_01)), 50))
+        .allSatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.LOCKED));
+  }
+
+  @Test
+  void withASingleHub_theVehicleHasNowhereToGoAndStaysParked() {
+    List<HubConfig> oneHub = List.of(TWO_HUBS.get(0));
+
+    assertThat(run(tripScenario(1, 0, oneHub, List.of(BIKE_AT_HUB_01)), 50))
+        .allSatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.LOCKED));
+  }
+
+  @Test
+  void aHubAtTheSamePlace_isNotADestination() {
+    List<HubConfig> samePlace =
+        List.of(
+            new HubConfig("hub-01", "Hub one", HUB_01), new HubConfig("hub-02", "Twin", HUB_01));
+
+    assertThat(run(tripScenario(1, 0, samePlace, List.of(BIKE_AT_HUB_01)), 50))
+        .allSatisfy(t -> assertThat(t.lockState()).isEqualTo(LockState.LOCKED));
+  }
+
+  @Test
+  void sameSeedAndScenarioWithTrips_publishTheSameSequenceOfReadings() {
+    List<VehicleTelemetry> first = run(tripScenario(0.3, 0.05, FOUR_HUBS, THREE_VEHICLES), 200);
+    List<VehicleTelemetry> second = run(tripScenario(0.3, 0.05, FOUR_HUBS, THREE_VEHICLES), 200);
+
+    assertThat(first).hasSize(600).usingRecursiveFieldByFieldElementComparator().isEqualTo(second);
   }
 
   private static List<VehicleTelemetry> run(ScenarioConfig scenario, int ticks) {
