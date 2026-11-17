@@ -15,10 +15,9 @@ The broker connection is set with environment variables:
 | `SIMULATOR_MQTT_USERNAME` | empty | Username; empty connects without authentication |
 | `SIMULATOR_MQTT_PASSWORD` | empty | Password, used with the username |
 | `SIMULATOR_MQTT_CLIENT_ID` | generated | MQTT client id; must be unique per broker |
-| `SIMULATOR_SCENARIO_FILE` | `classpath:scenarios/ria-ride.yml` | Scenario file (hubs, vehicles, simulation parameters). Use `file:/config/scenario.yml` for a file mounted into the container |
+| `SIMULATOR_SCENARIO_FILE` | `classpath:scenarios/ria-ride.yml` | Scenario file (hubs, vehicles, simulation parameters). Use `file:/config/scenario.yml` for a file mounted into the container. `ria-ride-charging.yml` is the same fleet with a fast charge rate, to watch the batteries rise. Select it with `SIMULATOR_SCENARIO_FILE=classpath:scenarios/ria-ride-charging.yml` |
 
-If the broker is unreachable or the connection drops, the simulator keeps retrying (from 1 s up to
-2 min between attempts) and resends what it could not deliver.
+If the broker is unreachable or the connection drops, the simulator keeps retrying (from 1 s up to 2 min between attempts) and resends what it could not deliver.
 
 ## How telemetry is published
 
