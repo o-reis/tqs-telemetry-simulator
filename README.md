@@ -62,6 +62,8 @@ breaks a rule, the simulator does not start and the log lists every problem with
 | `simulation.faultProbability` | Chance of a fault per reading, from 0 to 1 |
 | `hubs[]` | `id`, `name`, `position` (`lat` -90 to 90, `lon` -180 to 180) |
 | `vehicles[]` | `id`, `type` (`E_BIKE` or `E_SCOOTER`), `hub` (an id from `hubs`), `battery` (0 to 100) |
+| `simulation.drainPercentPerMinute` | Optional, default 0. Battery lost per minute while a vehicle is riding, zero or more |
+| `simulation.chargePercentPerMinute` | Optional, default 0. Battery gained per minute while a vehicle is parked and locked at a hub, zero or more |
 
 Identifiers match `[A-Za-z0-9_-]{1,64}` and are unique within hubs and within vehicles. The vehicle
 type is internal to the simulator and never appears in the contract messages.
