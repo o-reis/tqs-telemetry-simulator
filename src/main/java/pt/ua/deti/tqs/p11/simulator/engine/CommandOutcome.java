@@ -26,6 +26,9 @@ public record CommandOutcome(Status status, String reason) {
   /** The vehicle is not in this simulator's fleet (reason defined by the contract). */
   public static final String UNKNOWN_VEHICLE = "UNKNOWN_VEHICLE";
 
+  /** A command received after its expiresAt (reason defined by the contract). */
+  public static final String EXPIRED = "EXPIRED";
+
   /** A lock while the vehicle is between hubs: it can only be locked at a hub. */
   public static final String NOT_AT_HUB = "NOT_AT_HUB";
 
