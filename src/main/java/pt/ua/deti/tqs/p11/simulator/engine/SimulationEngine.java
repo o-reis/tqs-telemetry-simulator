@@ -6,14 +6,15 @@ import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 import pt.ua.deti.tqs.p11.simulator.config.HubConfig;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
+import pt.ua.deti.tqs.p11.simulator.config.SimulationParams;
 import pt.ua.deti.tqs.p11.simulator.telemetry.LockState;
 import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
 
 /**
- * Main loop of the simulation. Each {@link #tick()} advances every vehicle by one emission interval
- * and publishes its state through the {@link TelemetryPublisher} port.
+ * Main loop of the simulation. Each {@link #tick()} publishes the state of every vehicle through
+ * the {@link TelemetryPublisher} port and then advances it by one emission interval.
  *
  * <p>The engine never reads the time and owns no thread: {@link SimulationRunner} calls {@code
  * tick()} at the configured rate, and tests call it directly. All randomness comes from the one
@@ -22,6 +23,10 @@ import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
  *
  * <p>Vehicles stay parked and locked in their hub. On each tick a healthy vehicle gets a fault with
  * the scenario's {@code faultProbability}; a fault, once raised, stays.
+ *
+ * <p>The battery follows the {@link BatteryModel} of the scenario's rates. The first reading of a
+ * vehicle has the battery of the scenario; after each reading the battery moves by one interval.
+ * The model draws no random numbers, so the rates never change the sequence of faults.
  */
 public class SimulationEngine {
 
@@ -30,8 +35,13 @@ public class SimulationEngine {
 
   private static final double PARKED_SPEED_KMH = 0.0;
 
+  /** Every vehicle stays locked in its hub, so this is its only activity until trips exist. */
+  private static final BatteryModel.Activity ACTIVITY = BatteryModel.Activity.PARKED_AT_HUB;
+
   private final String fleetId;
   private final double faultProbability;
+  private final double intervalSeconds;
+  private final BatteryModel batteryModel;
   private final TelemetryPublisher publisher;
   private final RandomGenerator random;
   private final List<SimulatedVehicle> vehicles;
@@ -43,7 +53,11 @@ public class SimulationEngine {
   public SimulationEngine(
       ScenarioConfig scenario, TelemetryPublisher publisher, RandomGenerator random) {
     this.fleetId = scenario.fleetId();
-    this.faultProbability = scenario.simulation().faultProbability();
+    SimulationParams params = scenario.simulation();
+    this.faultProbability = params.faultProbability();
+    this.intervalSeconds = params.emissionIntervalSeconds();
+    this.batteryModel =
+        new BatteryModel(params.drainPercentPerMinute(), params.chargePercentPerMinute());
     this.publisher = publisher;
     this.random = random;
     // Hub ids are unique and every vehicle's hub exists: ScenarioParser checks both.
@@ -56,11 +70,12 @@ public class SimulationEngine {
             .toList();
   }
 
-  /** Advances every vehicle by one interval and publishes one reading per vehicle. */
+  /** Publishes one reading per vehicle, then advances every vehicle by one interval. */
   public void tick() {
     for (SimulatedVehicle vehicle : vehicles) {
       maybeRaiseFault(vehicle);
       publisher.publish(telemetryOf(vehicle));
+      vehicle.batteryPercent = batteryModel.next(vehicle.batteryPercent, ACTIVITY, intervalSeconds);
     }
   }
 
@@ -88,7 +103,7 @@ public class SimulationEngine {
     private final String id;
     private final String hubId;
     private final Position hubPosition;
-    private final double batteryPercent;
+    private double batteryPercent;
     private String faultCode;
 
     private SimulatedVehicle(String id, String hubId, Position hubPosition, double batteryPercent) {

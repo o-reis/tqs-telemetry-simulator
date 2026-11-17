@@ -77,6 +77,17 @@ class ScenarioLoaderTest {
   }
 
   @Test
+  void load_withBatteryRates_readsThem() {
+    ScenarioConfig config =
+        load(
+            VALID.replace(
+                "  faultProbability: 0.01",
+                "  faultProbability: 0.01\n  drainPercentPerMinute: 0.5\n  chargePercentPerMinute: 1"));
+
+    assertThat(config.simulation()).isEqualTo(new SimulationParams(10.0, 42L, 0.01, 0.5, 1.0));
+  }
+
+  @Test
   void load_ruleBroken_reportsTheProblemsAndWhereTheyCameFrom() {
     assertRejected(
         VALID.replace("battery: 85", "battery: 150"),

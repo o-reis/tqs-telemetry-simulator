@@ -41,6 +41,20 @@ class ScenarioParserTest {
     return obj("emissionIntervalSeconds", interval, "seed", seed, "faultProbability", probability);
   }
 
+  private static Map<String, Object> simulationWithRates(Object drain, Object charge) {
+    return obj(
+        "emissionIntervalSeconds",
+        10,
+        "seed",
+        42,
+        "faultProbability",
+        0.01,
+        "drainPercentPerMinute",
+        drain,
+        "chargePercentPerMinute",
+        charge);
+  }
+
   private static Map<String, Object> hub(Object id, Object name, Object position) {
     return obj("id", id, "name", name, "position", position);
   }
@@ -100,6 +114,10 @@ class ScenarioParserTest {
 
   private static Map<String, Object> scenarioWithInterval(Object interval) {
     return withSimulation(simulation(interval, 42, 0.01));
+  }
+
+  private static Map<String, Object> scenarioWithRates(Object drain, Object charge) {
+    return withSimulation(simulationWithRates(drain, charge));
   }
 
   private static Map<String, Object> scenarioWithFaultProbability(Object probability) {
@@ -248,6 +266,72 @@ class ScenarioParserTest {
         "hubs[0].position.lat: must be between -90 and 90 (was 91.0)",
         "hubs[0].position.lon: must be between -180 and 180 (was -200.0)",
         "vehicles[0].battery: must be between 0 and 100 (was 101.0)");
+  }
+
+  // ---- Battery rates (optional, zero by default) ----
+
+  @Test
+  void parse_batteryRatesOmitted_defaultToZero() {
+    SimulationParams params = parser.parse(validScenario()).simulation();
+
+    assertThat(params.drainPercentPerMinute()).isZero();
+    assertThat(params.chargePercentPerMinute()).isZero();
+  }
+
+  @Test
+  void parse_batteryRatesGiven_areRead() {
+    // 1 is an Integer, as a YAML file gives it.
+    SimulationParams params = parser.parse(scenarioWithRates(0.5, 1)).simulation();
+
+    assertThat(params).isEqualTo(new SimulationParams(10.0, 42L, 0.01, 0.5, 1.0));
+  }
+
+  @Test
+  void parse_oneBatteryRateGiven_theOtherDefaultsToZero() {
+    assertThat(parser.parse(scenarioWithRates(0.5, null)).simulation())
+        .isEqualTo(new SimulationParams(10.0, 42L, 0.01, 0.5, 0.0));
+    assertThat(parser.parse(scenarioWithRates(null, 1)).simulation())
+        .isEqualTo(new SimulationParams(10.0, 42L, 0.01, 0.0, 1.0));
+  }
+
+  @Test
+  void parse_batteryRatesAtZero_areAccepted() {
+    assertThat(parser.parse(scenarioWithRates(0, 0)).simulation())
+        .isEqualTo(new SimulationParams(10.0, 42L, 0.01, 0.0, 0.0));
+  }
+
+  @ParameterizedTest
+  @ValueSource(doubles = {-0.0001, -1, Double.NaN, Double.POSITIVE_INFINITY})
+  void parse_invalidDrainRate_isRejectedWithTheFieldPath(double rate) {
+    assertRejectedWith(
+        scenarioWithRates(rate, 1),
+        "simulation.drainPercentPerMinute: must be zero or more and finite (was " + rate + ")");
+  }
+
+  @ParameterizedTest
+  @ValueSource(doubles = {-0.0001, -1, Double.NaN, Double.POSITIVE_INFINITY})
+  void parse_invalidChargeRate_isRejectedWithTheFieldPath(double rate) {
+    assertRejectedWith(
+        scenarioWithRates(0.5, rate),
+        "simulation.chargePercentPerMinute: must be zero or more and finite (was " + rate + ")");
+  }
+
+  @Test
+  void parse_batteryRateOfWrongType_isRejectedWithTheFieldPath() {
+    assertRejectedWith(
+        scenarioWithRates("fast", 1),
+        "simulation.drainPercentPerMinute: must be a number (was 'fast')");
+    assertRejectedWith(
+        scenarioWithRates(0.5, true),
+        "simulation.chargePercentPerMinute: must be a number (was true)");
+  }
+
+  @Test
+  void parse_bothBatteryRatesInvalid_reportsBothInFileOrder() {
+    assertRejectedWith(
+        scenarioWithRates(-1, -2),
+        "simulation.drainPercentPerMinute: must be zero or more and finite (was -1.0)",
+        "simulation.chargePercentPerMinute: must be zero or more and finite (was -2.0)");
   }
 
   // ---- Required fields ----

@@ -15,10 +15,9 @@ The broker connection is set with environment variables:
 | `SIMULATOR_MQTT_USERNAME` | empty | Username; empty connects without authentication |
 | `SIMULATOR_MQTT_PASSWORD` | empty | Password, used with the username |
 | `SIMULATOR_MQTT_CLIENT_ID` | generated | MQTT client id; must be unique per broker |
-| `SIMULATOR_SCENARIO_FILE` | `classpath:scenarios/ria-ride.yml` | Scenario file (hubs, vehicles, simulation parameters). Use `file:/config/scenario.yml` for a file mounted into the container |
+| `SIMULATOR_SCENARIO_FILE` | `classpath:scenarios/ria-ride.yml` | Scenario file (hubs, vehicles, simulation parameters). Use `file:/config/scenario.yml` for a file mounted into the container. `ria-ride-charging.yml` is the same fleet with a fast charge rate, to watch the batteries rise. Select it with `SIMULATOR_SCENARIO_FILE=classpath:scenarios/ria-ride-charging.yml` |
 
-If the broker is unreachable or the connection drops, the simulator keeps retrying (from 1 s up to
-2 min between attempts) and resends what it could not deliver.
+If the broker is unreachable or the connection drops, the simulator keeps retrying (from 1 s up to 2 min between attempts) and resends what it could not deliver.
 
 ## How telemetry is published
 
@@ -30,11 +29,12 @@ broker.
 
 ## How the simulation runs
 
-At start-up the simulator begins a run that ticks every `simulation.emissionIntervalSeconds`
-(fixed rate, first tick immediately). On each tick every vehicle, in scenario order, publishes one
-telemetry message. Vehicles stay parked and locked in their hub (hub position, speed 0, battery from
-the scenario). A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once
-raised, a fault stays for the rest of the run.
+At start-up the simulator begins a run that ticks every `simulation.emissionIntervalSeconds` (fixed rate, first tick immediately). 
+On each tick every vehicle, in scenario order, publishes one telemetry message. 
+Vehicles stay parked and locked in their hub (hub position, speed 0). 
+The first reading of a vehicle has the battery of the scenario; after each reading the battery charges by simulation.chargePercentPerMinute times the interval in minutes, up to 100 %. 
+A vehicle that is riding would lose simulation.drainPercentPerMinute instead, but until the simulator supports trips every vehicle stays parked. 
+A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once raised, a fault stays for the rest of the run.
 
 Fault codes this simulator raises (the contract lets each simulator define its own):
 
@@ -62,6 +62,8 @@ breaks a rule, the simulator does not start and the log lists every problem with
 | `simulation.faultProbability` | Chance of a fault per reading, from 0 to 1 |
 | `hubs[]` | `id`, `name`, `position` (`lat` -90 to 90, `lon` -180 to 180) |
 | `vehicles[]` | `id`, `type` (`E_BIKE` or `E_SCOOTER`), `hub` (an id from `hubs`), `battery` (0 to 100) |
+| `simulation.drainPercentPerMinute` | Optional, default 0. Battery lost per minute while a vehicle is riding, zero or more |
+| `simulation.chargePercentPerMinute` | Optional, default 0. Battery gained per minute while a vehicle is parked and locked at a hub, zero or more |
 
 Identifiers match `[A-Za-z0-9_-]{1,64}` and are unique within hubs and within vehicles. The vehicle
 type is internal to the simulator and never appears in the contract messages.

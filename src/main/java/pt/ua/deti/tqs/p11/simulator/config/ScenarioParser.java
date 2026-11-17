@@ -62,7 +62,32 @@ public class ScenarioParser {
     Double probability =
         number(simulation, "faultProbability", "simulation.faultProbability", problems);
     requireBetween(probability, 0, 1, "simulation.faultProbability", problems);
-    return problems.size() == before ? new SimulationParams(interval, seed, probability) : null;
+    Double drain =
+        optionalRate(
+            simulation, "drainPercentPerMinute", "simulation.drainPercentPerMinute", problems);
+    Double charge =
+        optionalRate(
+            simulation, "chargePercentPerMinute", "simulation.chargePercentPerMinute", problems);
+    return problems.size() == before
+        ? new SimulationParams(interval, seed, probability, drain, charge)
+        : null;
+  }
+
+  /**
+   * Reads a rate that may be left out: absent means 0. A present value must be a number, zero or
+   * more and finite.
+   */
+  private static Double optionalRate(
+      Map<?, ?> parent, String key, String path, List<String> problems) {
+    if (parent.get(key) == null) {
+      return 0.0;
+    }
+    Double rate = number(parent, key, path, problems);
+    // Written so that NaN is rejected too, and the upper bound rejects infinity.
+    if (rate != null && !(rate >= 0 && rate <= Double.MAX_VALUE)) {
+      problems.add(path + ": must be zero or more and finite (was " + rate + ")");
+    }
+    return rate;
   }
 
   private static List<HubConfig> parseHubs(Map<?, ?> raw, List<String> problems) {

@@ -6,6 +6,9 @@ simulation:
   emissionIntervalSeconds: 10   # one reading per vehicle every 10 s
   seed: 42                      # the same seed gives the same run
   faultProbability: 0.01        # chance of a fault per reading, between 0 and 1
+  drainPercentPerMinute: 0.5    # battery lost per minute while riding (optional, default 0)
+  chargePercentPerMinute: 0     # battery gained per minute parked at a hub (optional, default 0);
+                                # 0 keeps the 19/20/21 % batteries below on the BR1 boundary
 
 hubs:
   - id: hub-01

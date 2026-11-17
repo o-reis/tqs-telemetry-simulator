@@ -7,12 +7,17 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import pt.ua.deti.tqs.p11.simulator.contract.ContractSchemas;
 import pt.ua.deti.tqs.p11.simulator.contract.TelemetryMessageMapper;
+import pt.ua.deti.tqs.p11.simulator.engine.SimulationEngine;
 import pt.ua.deti.tqs.p11.simulator.telemetry.LockState;
 import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
 import tools.jackson.databind.json.JsonMapper;
@@ -68,6 +73,39 @@ class ExampleScenariosTest {
     assertThat(config.vehicles())
         .extracting(VehicleConfig::type)
         .contains(VehicleType.E_BIKE, VehicleType.E_SCOOTER);
+  }
+
+  @Test
+  void riaRideCharging_isTheSameFleetAsRiaRide_withAChargeRate() throws IOException {
+    ScenarioConfig demo = load(DIR.resolve("ria-ride.yml"));
+    ScenarioConfig charging = load(DIR.resolve("ria-ride-charging.yml"));
+
+    assertThat(charging.hubs()).isEqualTo(demo.hubs());
+    assertThat(charging.vehicles())
+        .extracting(VehicleConfig::id)
+        .containsExactlyElementsOf(demo.vehicles().stream().map(VehicleConfig::id).toList());
+    assertThat(charging.simulation().chargePercentPerMinute()).isPositive();
+  }
+
+  /** The demo must show charging: the emptiest vehicle fills up within a short run. */
+  @Test
+  void riaRideCharging_bringsTheEmptiestVehicleToFullWithinTwentyFiveReadings() throws IOException {
+    ScenarioConfig config = load(DIR.resolve("ria-ride-charging.yml"));
+    Map<String, Double> lastBattery = new HashMap<>();
+    SimulationEngine engine =
+        new SimulationEngine(
+            config,
+            telemetry -> {
+              lastBattery.put(telemetry.vehicleId(), telemetry.batteryPercent());
+              return CompletableFuture.completedFuture(null);
+            },
+            new Random(config.simulation().seed()));
+
+    for (int i = 0; i < 25; i++) {
+      engine.tick();
+    }
+
+    assertThat(lastBattery).containsEntry("scooter-0008", 100.0);
   }
 
   @Test
