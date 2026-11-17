@@ -30,11 +30,12 @@ broker.
 
 ## How the simulation runs
 
-At start-up the simulator begins a run that ticks every `simulation.emissionIntervalSeconds`
-(fixed rate, first tick immediately). On each tick every vehicle, in scenario order, publishes one
-telemetry message. Vehicles stay parked and locked in their hub (hub position, speed 0, battery from
-the scenario). A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once
-raised, a fault stays for the rest of the run.
+At start-up the simulator begins a run that ticks every `simulation.emissionIntervalSeconds` (fixed rate, first tick immediately). 
+On each tick every vehicle, in scenario order, publishes one telemetry message. 
+Vehicles stay parked and locked in their hub (hub position, speed 0). 
+The first reading of a vehicle has the battery of the scenario; after each reading the battery charges by simulation.chargePercentPerMinute times the interval in minutes, up to 100 %. 
+A vehicle that is riding would lose simulation.drainPercentPerMinute instead, but until the simulator supports trips every vehicle stays parked. 
+A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once raised, a fault stays for the rest of the run.
 
 Fault codes this simulator raises (the contract lets each simulator define its own):
 
