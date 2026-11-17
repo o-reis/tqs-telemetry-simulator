@@ -1,5 +1,6 @@
 package pt.ua.deti.tqs.p11.simulator.engine;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.random.RandomGenerator;
@@ -22,28 +23,38 @@ import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
  * {@link RandomGenerator} it is given, and vehicles are visited in scenario order, so the same seed
  * and scenario always publish the same sequence.
  *
+ * <p>The engine is not thread-safe: {@code tick()} and the commands ({@link #unlock}, {@link
+ * #lock}, {@link #ping}) must all be called from the same thread.
+ *
  * <p>Faults: on each tick a healthy vehicle gets a fault with the scenario's {@code
  * faultProbability}; a fault, once raised, stays.
  *
- * <p>Trips: a vehicle parked and locked at a hub, without a fault, starts a trip with the
+ * <p>Automatic trips: a vehicle parked and locked at a hub, without a fault, starts a trip with the
  * scenario's {@code tripProbability} after each reading. Its destination is another hub, at a
  * different place, chosen at random. During the trip it is unlocked, in no hub, at the ride speed,
  * and its position moves along the straight line between the two hubs ({@link Trip}). When the trip
  * ends it is locked at the destination hub, at that hub's exact position. A vehicle that just
  * arrived is always reported parked at least once before it leaves again. With a {@code
- * tripProbability} of 0 the engine draws no random number for trips, so a scenario without trips
- * publishes the same sequence as before trips existed.
+ * tripProbability} of 0 the engine draws no random number for trips.
  *
- * <p>The battery follows the {@link BatteryModel} of the scenario's rates: it drains while riding
- * and charges while parked. The first reading of a vehicle has the battery of the scenario; after
- * each reading the battery moves by one interval. The model draws no random numbers.
+ * <p>Commands from the platform: {@code unlock} starts a trip to another hub chosen at random; on
+ * arrival the vehicle waits there, unlocked, until {@code lock}. A vehicle can only be locked at a
+ * hub: when it is waiting at one, or before it has moved away from the hub it left. Commands are
+ * idempotent, as the contract requires: unlocking an unlocked vehicle or locking a locked one
+ * changes nothing and is completed. Unlocking a vehicle on an automatic trip hands that trip over
+ * to the platform: it no longer locks on arrival.
+ *
+ * <p>The battery follows the {@link BatteryModel} of the scenario's rates: it drains while riding,
+ * charges while parked and does not change while waiting unlocked at a hub. The first reading of a
+ * vehicle has the battery of the scenario; after each reading the battery moves by one interval.
+ * The model draws no random numbers.
  */
 public class SimulationEngine {
 
   /** Fault codes this simulator raises (the contract lets each simulator define its own). */
   static final List<String> FAULT_CODES = List.of("BRAKE_WEAR", "FLAT_TIRE", "BATTERY_OVERHEAT");
 
-  private static final double PARKED_SPEED_KMH = 0.0;
+  private static final double STOPPED_SPEED_KMH = 0.0;
 
   private final String fleetId;
   private final double faultProbability;
@@ -55,6 +66,7 @@ public class SimulationEngine {
   private final RandomGenerator random;
   private final List<HubConfig> hubs;
   private final List<SimulatedVehicle> vehicles;
+  private final Map<String, SimulatedVehicle> vehiclesById;
 
   /**
    * @param random the run's only source of randomness; share the same instance with anything else
@@ -81,6 +93,9 @@ public class SimulationEngine {
             .map(v ->
                 new SimulatedVehicle(v.id(), v.hubId(), hubPositions.get(v.hubId()), v.battery()))
             .toList();
+    // Vehicle ids are unique (ScenarioParser checks it).
+    this.vehiclesById = new LinkedHashMap<>();
+    vehicles.forEach(v -> vehiclesById.put(v.id, v));
   }
 
   /** Publishes one reading per vehicle, then advances every vehicle by one interval. */
@@ -92,6 +107,70 @@ public class SimulationEngine {
     }
   }
 
+  /**
+   * Unlocks a vehicle for the platform. A parked vehicle starts a trip to another hub chosen at
+   * random (or, with no other hub, waits unlocked at its own); an unlocked one stays as it is.
+   *
+   * @return completed, or rejected with {@code UNKNOWN_VEHICLE} or {@code VEHICLE_FAULT}
+   */
+  public CommandOutcome unlock(String vehicleId) {
+    SimulatedVehicle vehicle = vehiclesById.get(vehicleId);
+    if (vehicle == null) {
+      return CommandOutcome.rejected(CommandOutcome.UNKNOWN_VEHICLE);
+    }
+    switch (vehicle.state) {
+      case PARKED -> {
+        if (vehicle.faultCode != null) {
+          return CommandOutcome.rejected(CommandOutcome.VEHICLE_FAULT);
+        }
+        startPlatformTrip(vehicle);
+      }
+      // Already unlocked: nothing changes, except that an automatic trip is handed over.
+      case RIDING -> vehicle.platformTrip = true;
+      case WAITING_AT_HUB -> {
+        // Already unlocked and at a hub: nothing to do.
+      }
+    }
+    return CommandOutcome.completed();
+  }
+
+  /**
+   * Locks a vehicle at the hub where it is. A vehicle between hubs cannot be locked.
+   *
+   * @return completed, or rejected with {@code UNKNOWN_VEHICLE} or {@code NOT_AT_HUB}
+   */
+  public CommandOutcome lock(String vehicleId) {
+    SimulatedVehicle vehicle = vehiclesById.get(vehicleId);
+    if (vehicle == null) {
+      return CommandOutcome.rejected(CommandOutcome.UNKNOWN_VEHICLE);
+    }
+    switch (vehicle.state) {
+      case PARKED -> {
+        // Already locked: nothing to do.
+      }
+      case WAITING_AT_HUB -> vehicle.park();
+      case RIDING -> {
+        // At 0 s the vehicle is still at the hub it is leaving; after that it is between hubs.
+        if (vehicle.tripElapsedSeconds > 0) {
+          return CommandOutcome.rejected(CommandOutcome.NOT_AT_HUB);
+        }
+        vehicle.park();
+      }
+    }
+    return CommandOutcome.completed();
+  }
+
+  /**
+   * Checks that a vehicle is reachable; changes nothing.
+   *
+   * @return completed, or rejected with {@code UNKNOWN_VEHICLE}
+   */
+  public CommandOutcome ping(String vehicleId) {
+    return vehiclesById.containsKey(vehicleId)
+        ? CommandOutcome.completed()
+        : CommandOutcome.rejected(CommandOutcome.UNKNOWN_VEHICLE);
+  }
+
   private void maybeRaiseFault(SimulatedVehicle vehicle) {
     // nextDouble() is in [0, 1): a probability of 0 never raises a fault, 1 always does.
     if (vehicle.faultCode == null && random.nextDouble() < faultProbability) {
@@ -101,72 +180,131 @@ public class SimulationEngine {
 
   /** Moves the vehicle one interval forward: battery, then trip progress or a new trip. */
   private void advance(SimulatedVehicle vehicle) {
-    if (vehicle.isRiding()) {
-      vehicle.batteryPercent =
-          batteryModel.next(vehicle.batteryPercent, Activity.RIDING, intervalSeconds);
-      vehicle.tripElapsedSeconds += intervalSeconds;
-      if (vehicle.trip.isFinished(vehicle.tripElapsedSeconds)) {
-        vehicle.arrive();
+    switch (vehicle.state) {
+      case RIDING -> {
+        vehicle.batteryPercent =
+            batteryModel.next(vehicle.batteryPercent, Activity.RIDING, intervalSeconds);
+        vehicle.tripElapsedSeconds += intervalSeconds;
+        if (vehicle.trip.isFinished(vehicle.tripElapsedSeconds)) {
+          vehicle.arrive();
+        }
       }
-    } else {
-      vehicle.batteryPercent =
-          batteryModel.next(vehicle.batteryPercent, Activity.PARKED_AT_HUB, intervalSeconds);
-      maybeStartTrip(vehicle);
+      case PARKED -> {
+        vehicle.batteryPercent =
+            batteryModel.next(vehicle.batteryPercent, Activity.PARKED_AT_HUB, intervalSeconds);
+        maybeStartAutomaticTrip(vehicle);
+      }
+      case WAITING_AT_HUB ->
+          vehicle.batteryPercent =
+              batteryModel.next(vehicle.batteryPercent, Activity.OTHER, intervalSeconds);
     }
   }
 
-  private void maybeStartTrip(SimulatedVehicle vehicle) {
+  private void maybeStartAutomaticTrip(SimulatedVehicle vehicle) {
     // Checked before any draw: without trips, or for a faulty vehicle, no random number is used.
     if (tripProbability == 0 || vehicle.faultCode != null) {
       return;
     }
-    // A hub at the same place as the current one is not a trip (Trip.between rejects it).
-    List<HubConfig> destinations =
-        hubs.stream().filter(hub -> !hub.position().equals(vehicle.hubPosition)).toList();
+    List<HubConfig> destinations = destinationsFrom(vehicle);
     if (destinations.isEmpty()) {
       return;
     }
     if (random.nextDouble() < tripProbability) {
-      HubConfig destination = destinations.get(random.nextInt(destinations.size()));
-      vehicle.startTrip(
-          Trip.between(vehicle.hubPosition, destination.position(), rideSpeedKmh),
-          destination.id());
+      vehicle.startTrip(tripTo(vehicle, randomHub(destinations)), false);
     }
   }
 
-  private VehicleTelemetry telemetryOf(SimulatedVehicle vehicle) {
-    if (vehicle.isRiding()) {
-      return new VehicleTelemetry(
-          fleetId,
-          vehicle.id,
-          vehicle.batteryPercent,
-          LockState.UNLOCKED,
-          vehicle.trip.positionAt(vehicle.tripElapsedSeconds),
-          null,
-          vehicle.faultCode,
-          rideSpeedKmh);
+  private void startPlatformTrip(SimulatedVehicle vehicle) {
+    List<HubConfig> destinations = destinationsFrom(vehicle);
+    if (destinations.isEmpty()) {
+      vehicle.state = VehicleState.WAITING_AT_HUB;
+      return;
     }
-    return new VehicleTelemetry(
-        fleetId,
-        vehicle.id,
-        vehicle.batteryPercent,
-        LockState.LOCKED,
-        vehicle.hubPosition,
-        vehicle.hubId,
-        vehicle.faultCode,
-        PARKED_SPEED_KMH);
+    vehicle.startTrip(tripTo(vehicle, randomHub(destinations)), true);
   }
+
+  /** Hubs at a different place than the vehicle's (Trip.between rejects the same place). */
+  private List<HubConfig> destinationsFrom(SimulatedVehicle vehicle) {
+    return hubs.stream().filter(hub -> !hub.position().equals(vehicle.hubPosition)).toList();
+  }
+
+  private HubConfig randomHub(List<HubConfig> candidates) {
+    return candidates.get(random.nextInt(candidates.size()));
+  }
+
+  private PlannedTrip tripTo(SimulatedVehicle vehicle, HubConfig destination) {
+    return new PlannedTrip(
+        Trip.between(vehicle.hubPosition, destination.position(), rideSpeedKmh), destination.id());
+  }
+
+  private VehicleTelemetry telemetryOf(SimulatedVehicle vehicle) {
+    return switch (vehicle.state) {
+      case PARKED ->
+          new VehicleTelemetry(
+              fleetId,
+              vehicle.id,
+              vehicle.batteryPercent,
+              LockState.LOCKED,
+              vehicle.hubPosition,
+              vehicle.hubId,
+              vehicle.faultCode,
+              STOPPED_SPEED_KMH);
+      case WAITING_AT_HUB ->
+          new VehicleTelemetry(
+              fleetId,
+              vehicle.id,
+              vehicle.batteryPercent,
+              LockState.UNLOCKED,
+              vehicle.hubPosition,
+              vehicle.hubId,
+              vehicle.faultCode,
+              STOPPED_SPEED_KMH);
+      case RIDING ->
+          new VehicleTelemetry(
+              fleetId,
+              vehicle.id,
+              vehicle.batteryPercent,
+              LockState.UNLOCKED,
+              vehicle.trip.positionAt(vehicle.tripElapsedSeconds),
+              null,
+              vehicle.faultCode,
+              rideSpeedKmh);
+    };
+  }
+
+  /** What a vehicle is doing. */
+  private enum VehicleState {
+    /** Locked at a hub. */
+    PARKED,
+    /** On a trip between two hubs, unlocked. */
+    RIDING,
+    /** Unlocked at a hub after a platform trip, until the platform locks it. */
+    WAITING_AT_HUB
+  }
+
+  /** A trip and the id of the hub where it ends. */
+  private record PlannedTrip(Trip trip, String destinationHubId) {}
 
   /** State of one vehicle during a run. Only the thread that calls tick() touches it. */
   private static final class SimulatedVehicle {
     private final String id;
+
+    /** Hub where the vehicle is, or where its current trip started. */
     private String hubId;
+
     private Position hubPosition;
     private double batteryPercent;
     private String faultCode;
+    private VehicleState state = VehicleState.PARKED;
+
+    /** The trip in progress, or {@code null} unless riding. */
     private Trip trip;
+
     private String destinationHubId;
     private double tripElapsedSeconds;
+
+    /** Whether the platform unlocked the vehicle: then it waits for a lock on arrival. */
+    private boolean platformTrip;
 
     private SimulatedVehicle(String id, String hubId, Position hubPosition, double batteryPercent) {
       this.id = id;
@@ -175,22 +313,33 @@ public class SimulationEngine {
       this.batteryPercent = batteryPercent;
     }
 
-    private boolean isRiding() {
-      return trip != null;
-    }
-
-    private void startTrip(Trip newTrip, String destinationId) {
-      trip = newTrip;
-      destinationHubId = destinationId;
+    private void startTrip(PlannedTrip planned, boolean byPlatform) {
+      state = VehicleState.RIDING;
+      trip = planned.trip();
+      destinationHubId = planned.destinationHubId();
       tripElapsedSeconds = 0;
+      platformTrip = byPlatform;
     }
 
+    /** Reaches the destination, at the hub's exact position. */
     private void arrive() {
       hubId = destinationHubId;
       hubPosition = trip.destination();
+      state = platformTrip ? VehicleState.WAITING_AT_HUB : VehicleState.PARKED;
+      clearTrip();
+    }
+
+    /** Locks the vehicle at {@link #hubId}. */
+    private void park() {
+      state = VehicleState.PARKED;
+      clearTrip();
+    }
+
+    private void clearTrip() {
       trip = null;
       destinationHubId = null;
       tripElapsedSeconds = 0;
+      platformTrip = false;
     }
   }
 }

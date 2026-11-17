@@ -6,8 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import pt.ua.deti.tqs.p11.simulator.command.CommandService;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
 import pt.ua.deti.tqs.p11.simulator.engine.SimulationRunner;
+import pt.ua.deti.tqs.p11.simulator.mqtt.MqttCommandSubscriber;
 
 @SpringBootTest
 class SimulatorApplicationIT {
@@ -30,5 +32,11 @@ class SimulatorApplicationIT {
   @Test
   void applicationContext_startsTheSimulationRunner() {
     assertThat(context.getBean(SimulationRunner.class).isRunning()).isTrue();
+  }
+
+  @Test
+  void applicationContext_listensForThePlatformsCommands() {
+    assertThat(context.getBeansOfType(CommandService.class)).hasSize(1);
+    assertThat(context.getBeansOfType(MqttCommandSubscriber.class)).hasSize(1);
   }
 }

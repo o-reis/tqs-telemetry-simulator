@@ -35,6 +35,11 @@ public final class ContractSchemas {
     return validate("telemetry.schema.json", json);
   }
 
+  /** Returns the validation errors of a response message; empty when it follows the contract. */
+  public static List<Error> validateResponse(String json) {
+    return validate("response.schema.json", json);
+  }
+
   private static List<Error> validate(String schemaFile, String json) {
     Schema schema = REGISTRY.getSchema(SchemaLocation.of(ID_PREFIX + schemaFile));
     return schema.validate(

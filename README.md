@@ -1,8 +1,8 @@
 # Fleet telemetry simulator
 
-A separate service that simulates a fleet of light vehicles and publishes their telemetry over MQTT,
-following the interface contract in [contract/](contract/README.md). Any platform that implements the
-contract can consume it.
+A separate service that simulates a fleet of light vehicles, publishes their telemetry over MQTT and
+accepts lock, unlock and ping commands, following the interface contract in
+[contract/](contract/README.md). Any platform that implements the contract can consume it.
 
 ## Configuration
 
@@ -34,27 +34,31 @@ rate, first tick immediately). On each tick every vehicle, in scenario order, pu
 telemetry message and then moves one interval forward. The first reading of a vehicle is its state
 in the scenario: parked and locked at its hub.
 
-**Parked.** A vehicle parked at a hub is reported `locked`, with the hub's `hubId`, the hub's
-position and speed 0. Its battery charges by `simulation.chargePercentPerMinute` times the interval
-in minutes, up to 100 %.
+A vehicle is always in one of three states:
 
-**Trips.** After each reading, a parked vehicle without a fault starts a trip with
-`simulation.tripProbability`. Its destination is another hub at a different place, chosen at
-random; a scenario with a single hub has no trips. During the trip the vehicle is reported:
+| State | Reported as | Battery per interval |
+| --- | --- | --- |
+| Parked | `locked`, the hub's `hubId` and position, speed 0 | charges by `simulation.chargePercentPerMinute`, up to 100 % |
+| Riding | `unlocked`, `hubId` null, speed `simulation.rideSpeedKmh` | drains by `simulation.drainPercentPerMinute`, down to 0 % |
+| Waiting at a hub | `unlocked`, the hub's `hubId` and position, speed 0 | does not change |
 
-- `unlocked`, with `hubId` null and speed `simulation.rideSpeedKmh`;
-- at a position that moves along the straight line between the two hubs, a little closer to the
-  destination on every reading, so it never leaves the area of the configured hubs;
-- with a battery that drains by `simulation.drainPercentPerMinute` times the interval in minutes,
-  down to 0 %.
+**Trips.** A trip goes from one hub to another hub at a different place, chosen at random. The
+position moves along the straight line between the two hubs, a little closer to the destination on
+every reading, so it never leaves the area of the configured hubs. A trip lasts the distance between
+the hubs (along the Earth's surface, Haversine formula) divided by the ride speed. On arrival the
+vehicle is at the destination hub's exact position. A trip starts in one of two ways:
 
-A trip lasts the distance between the hubs (along the Earth's surface, Haversine formula) divided by
-the ride speed. When it ends, the vehicle is reported locked at the destination hub, at that hub's
-exact position. A vehicle that arrives is always reported parked at least once before it leaves
-again.
+- **Automatic trips.** After each reading, a parked vehicle without a fault starts a trip with
+  `simulation.tripProbability`. On arrival it is locked at the destination hub, and it is always
+  reported parked at least once before it leaves again.
+- **Trips started by the platform**, with an `unlock` command (see below). On arrival the vehicle
+  waits at the destination hub, unlocked, until the platform sends `lock`.
+
+A scenario with a single hub has no trips: a vehicle unlocked there waits at its own hub.
 
 **Faults.** A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once raised,
-a fault stays for the rest of the run. A faulty vehicle does not start trips.
+a fault stays for the rest of the run. A faulty vehicle does not start automatic trips and cannot
+be unlocked.
 
 Fault codes this simulator raises (the contract lets each simulator define its own):
 
@@ -66,9 +70,50 @@ Fault codes this simulator raises (the contract lets each simulator define its o
 
 **Reproducible runs.** All randomness (faults, trips and message ids) comes from one generator
 seeded with `simulation.seed`, and all time from one injected clock. Two runs with the same seed and
-scenario publish the same sequence of messages; only the timestamps follow the real clock. A
-scenario without trips (`tripProbability` 0) draws no random number for trips, so it publishes the
-same sequence as before trips existed. The engine is tested without a broker and without real time.
+scenario publish the same sequence of messages; only the timestamps follow the real clock. Commands
+take part in the same sequence, so a run with commands repeats only if the same commands arrive
+between the same ticks. A scenario without trips (`tripProbability` 0) draws no random number for
+trips. The engine is tested without a broker and without real time.
+
+## How commands are handled
+
+The simulator subscribes to `fleet/{fleetId}/vehicles/+/commands/+` (QoS 1) and answers every
+command once, on `fleet/{fleetId}/vehicles/{vehicleId}/responses` (QoS 1, not retained), with the
+`commandId` of the command.
+
+| Command | Parked | Riding | Waiting at a hub |
+| --- | --- | --- | --- |
+| `unlock` | Starts a trip to another hub. A faulty vehicle is rejected with `VEHICLE_FAULT` | `COMPLETED`, nothing changes (an automatic trip is handed over to the platform: it waits for a lock on arrival) | `COMPLETED`, nothing changes |
+| `lock` | `COMPLETED`, nothing changes | Rejected with `NOT_AT_HUB`, except before the vehicle has moved away from the hub it left: then it is locked there | Locks the vehicle at that hub |
+| `ping` | `COMPLETED` | `COMPLETED` | `COMPLETED` |
+
+The next telemetry message of the vehicle shows the change.
+
+- **Idempotent.** As the contract requires, unlocking an unlocked vehicle or locking a locked one
+  changes nothing and is answered `COMPLETED`, so a platform can safely retry after a timeout.
+- **Rejection reasons**, in `UPPER_SNAKE_CASE`:
+
+  | Reason | When |
+  | --- | --- |
+  | `UNKNOWN_VEHICLE` | The vehicle is not in the scenario (any command) |
+  | `EXPIRED` | The command was received after its `expiresAt`; it is not applied. At exactly `expiresAt` it is still on time |
+  | `NOT_AT_HUB` | A `lock` while the vehicle is between hubs |
+  | `VEHICLE_FAULT` | An `unlock` of a vehicle with an active fault |
+
+- **Invalid messages** (not JSON, missing or malformed `commandId`, `expiresAt` not in UTC, another
+  major `schemaVersion`, `fleetId`/`vehicleId` different from the topic, unknown command) get no
+  response, since none can be built without a valid `commandId`. They are logged with the reason and
+  dropped. Unknown fields and newer minor versions are accepted (tolerant reader).
+- **One thread.** Commands are applied on the same single thread that runs the ticks, in the order
+  they arrive, so a command never runs at the same time as a tick.
+
+To try it by hand with Mosquitto's command-line tools, with the simulator running:
+
+```bash
+mosquitto_sub -h localhost -v -t 'fleet/fleet-01/vehicles/bike-0001/#'
+mosquitto_pub -h localhost -t fleet/fleet-01/vehicles/bike-0001/commands/unlock \
+  -m '{"schemaVersion":"1.0.0","messageId":"c3a1f8d0-6a24-4f67-b1d2-9e3e4a5b6c03","type":"command","timestamp":"2026-11-17T17:00:00Z","fleetId":"fleet-01","vehicleId":"bike-0001","data":{"commandId":"e5b2a9c1-0d3f-4a8e-8b77-1c2d3e4f5a04"}}'
+```
 
 ## Scenario file
 
@@ -83,7 +128,7 @@ breaks a rule, the simulator does not start and the log lists every problem with
 | `simulation.faultProbability` | Chance of a fault per reading, from 0 to 1 |
 | `simulation.drainPercentPerMinute` | Optional, default 0. Battery lost per minute while a vehicle is riding, zero or more |
 | `simulation.chargePercentPerMinute` | Optional, default 0. Battery gained per minute while a vehicle is parked and locked at a hub, zero or more |
-| `simulation.tripProbability` | Optional, default 0 (no trips). Chance per reading that a parked vehicle starts a trip to another hub, from 0 to 1 |
+| `simulation.tripProbability` | Optional, default 0 (no automatic trips). Chance per reading that a parked vehicle starts a trip to another hub, from 0 to 1 |
 | `simulation.rideSpeedKmh` | Optional, default 15. Speed of a vehicle during a trip, greater than 0 |
 | `hubs[]` | `id`, `name`, `position` (`lat` -90 to 90, `lon` -180 to 180) |
 | `vehicles[]` | `id`, `type` (`E_BIKE` or `E_SCOOTER`), `hub` (an id from `hubs`), `battery` (0 to 100) |
@@ -97,9 +142,9 @@ Select one with `SIMULATOR_SCENARIO_FILE=classpath:scenarios/<file>`.
 
 | File | What it shows |
 | --- | --- |
-| `ria-ride.yml` (default) | 6 hubs in Aveiro and 20 parked vehicles, with batteries of 19, 20 and 21 % around the minimum battery to book (rule BR1) and rare faults |
+| `ria-ride.yml` (default) | 6 hubs in Aveiro and 20 parked vehicles, with batteries of 19, 20 and 21 % around the minimum battery to book (rule BR1) and rare faults. Vehicles move only when the platform unlocks them |
 | `ria-ride-charging.yml` | The same fleet with a fast charge rate, to watch the batteries rise to 100 % |
-| `ria-ride-trips.yml` | The same fleet riding between hubs, to watch vehicles move on a map: the first one leaves within seconds and reaches another hub in about 2 minutes |
+| `ria-ride-trips.yml` | The same fleet riding between hubs on its own, to watch vehicles move on a map: the first one leaves within seconds and reaches another hub in about 2 minutes |
 | `minimal.yml` | One hub and one vehicle, for quick local runs |
 
 ## Build and test

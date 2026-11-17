@@ -1,7 +1,6 @@
 package pt.ua.deti.tqs.p11.simulator.contract;
 
 import java.time.Clock;
-import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
@@ -15,13 +14,11 @@ import tools.jackson.databind.json.JsonMapper;
  * id, type, UTC timestamp, identifiers) with the state in {@code data}.
  */
 public class TelemetryMessageMapper {
-
   /** Contract version this simulator follows; must match contract/CHANGELOG.md. */
-  public static final String SCHEMA_VERSION = "1.0.0";
+  public static final String SCHEMA_VERSION = ContractEnvelope.SCHEMA_VERSION;
 
   private final JsonMapper jsonMapper;
-  private final Clock clock;
-  private final Supplier<UUID> messageIds;
+  private final ContractEnvelope envelope;
 
   public TelemetryMessageMapper(JsonMapper jsonMapper, Clock clock) {
     this(jsonMapper, clock, UUID::randomUUID);
@@ -29,8 +26,7 @@ public class TelemetryMessageMapper {
 
   public TelemetryMessageMapper(JsonMapper jsonMapper, Clock clock, Supplier<UUID> messageIds) {
     this.jsonMapper = jsonMapper;
-    this.clock = clock;
-    this.messageIds = messageIds;
+    this.envelope = new ContractEnvelope(clock, messageIds);
   }
 
   public String toJson(VehicleTelemetry telemetry) {
@@ -45,14 +41,7 @@ public class TelemetryMessageMapper {
     data.put("faultCode", telemetry.faultCode().orElse(null));
     telemetry.speedKmh().ifPresent(speed -> data.put("speedKmh", speed));
 
-    Map<String, Object> message = new LinkedHashMap<>();
-    message.put("schemaVersion", SCHEMA_VERSION);
-    message.put("messageId", messageIds.get().toString());
-    message.put("type", "telemetry");
-    message.put("timestamp", clock.instant().truncatedTo(ChronoUnit.MILLIS).toString());
-    message.put("fleetId", telemetry.fleetId());
-    message.put("vehicleId", telemetry.vehicleId());
-    message.put("data", data);
-    return jsonMapper.writeValueAsString(message);
+    return jsonMapper.writeValueAsString(
+        envelope.wrap("telemetry", telemetry.fleetId(), telemetry.vehicleId(), data));
   }
 }
