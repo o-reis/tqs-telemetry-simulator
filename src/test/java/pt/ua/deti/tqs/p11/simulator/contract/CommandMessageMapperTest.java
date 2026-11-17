@@ -104,15 +104,13 @@ class CommandMessageMapperTest {
   @Test
   void read_unknownFieldsAndANewerMinorVersion_areAccepted() {
     String newer =
-        json(
-            message -> {
-              message.put("schemaVersion", "1.3.0");
-              message.put("traceId", "abc");
-              dataOf(message).put("priority", "high");
-            });
+        json(message -> {
+          message.put("schemaVersion", "1.3.0");
+          message.put("traceId", "abc");
+          dataOf(message).put("priority", "high");
+        });
 
-    assertThat(mapper.read(UNLOCK_TOPIC, newer).commandId())
-        .isEqualTo(UUID.fromString(COMMAND_ID));
+    assertThat(mapper.read(UNLOCK_TOPIC, newer).commandId()).isEqualTo(UUID.fromString(COMMAND_ID));
   }
 
   static Stream<Arguments> invalidMessages() {

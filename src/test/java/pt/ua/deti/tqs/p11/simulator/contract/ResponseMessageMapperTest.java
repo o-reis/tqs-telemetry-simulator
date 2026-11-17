@@ -65,9 +65,7 @@ class ResponseMessageMapperTest {
   @Test
   void rejected_carriesTheStatusAndTheReason() {
     JsonNode data =
-        jsonMapper
-            .readTree(mapper.toJson(LOCK, CommandOutcome.rejected("NOT_AT_HUB")))
-            .get("data");
+        jsonMapper.readTree(mapper.toJson(LOCK, CommandOutcome.rejected("NOT_AT_HUB"))).get("data");
 
     assertThat(data.get("status").asString()).isEqualTo("REJECTED");
     assertThat(data.get("reason").asString()).isEqualTo("NOT_AT_HUB");
