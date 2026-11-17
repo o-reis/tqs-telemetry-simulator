@@ -142,7 +142,17 @@ class CommandMessageMapperTest {
         Arguments.of(
             "expiresAt not in UTC",
             json(m -> dataOf(m).put("expiresAt", "2026-11-10T11:10:30+01:00")),
-            "expiresAt"));
+            "expiresAt"),
+        Arguments.of(
+            "commandId not text", json(m -> dataOf(m).put("commandId", 12345)), "commandId"),
+        Arguments.of(
+            "expiresAt not text", json(m -> dataOf(m).put("expiresAt", 1700000000)), "expiresAt"),
+        Arguments.of(
+            "expiresAt ends in Z but is not a date",
+            json(m -> dataOf(m).put("expiresAt", "2026-13-45T10:10:30Z")),
+            "expiresAt"),
+        Arguments.of("empty payload", "", "JSON"),
+        Arguments.of("data not an object", json(m -> m.put("data", "unlock")), "data"));
   }
 
   @ParameterizedTest(name = "{0}")

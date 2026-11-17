@@ -11,6 +11,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.JsonNodeType;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Reads a command of the contract from its MQTT topic and JSON payload. The command name and the
@@ -84,7 +85,7 @@ public class CommandMessageMapper {
     } catch (JacksonException e) {
       throw invalid("payload is not valid JSON");
     }
-    if (node == null || !node.isObject()) {
+    if (!(node instanceof ObjectNode)) {
       throw invalid("payload must be a JSON object");
     }
     return node;

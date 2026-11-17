@@ -556,6 +556,22 @@ class SimulationEngineTest {
   }
 
   @Test
+  void unlock_vehicleAlreadyWaitingAtAHub_isCompleted_andItKeepsWaitingThere() {
+    SimulationEngine engine = commandedBike(TWO_HUBS);
+    engine.tick();
+    engine.unlock(BIKE);
+    tick(engine, 40);
+
+    // Starting a new trip here would take the bike away from hub-02.
+    assertThat(engine.unlock(BIKE)).isEqualTo(COMPLETED);
+    tick(engine, 2);
+
+    assertThat(lastReading().lockState()).isEqualTo(LockState.UNLOCKED);
+    assertThat(lastReading().hubId()).contains("hub-02");
+    assertThat(lastReading().speedKmh()).contains(0.0);
+  }
+
+  @Test
   void unlockedVehicle_ridesGraduallyTowardsAnotherHub() {
     SimulationEngine engine = commandedBike(TWO_HUBS);
     engine.tick();
