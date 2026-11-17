@@ -6,7 +6,12 @@ import java.util.random.RandomGenerator;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import pt.ua.deti.tqs.p11.simulator.command.CommandService;
+import pt.ua.deti.tqs.p11.simulator.command.ResponsePublisher;
+import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
+import pt.ua.deti.tqs.p11.simulator.contract.CommandMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.contract.RandomUuids;
+import pt.ua.deti.tqs.p11.simulator.contract.ResponseMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.contract.TelemetryMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 import tools.jackson.databind.json.JsonMapper;
@@ -36,5 +41,34 @@ public class MqttConfiguration {
     return new MqttTelemetryPublisher(
         mqttClient,
         new TelemetryMessageMapper(jsonMapper, clock, new RandomUuids(simulationRandom)));
+  }
+
+  /** Like the telemetry: the run's clock and seeded generator, so message ids are reproducible. */
+  @Bean
+  ResponsePublisher responsePublisher(
+      Mqtt5AsyncClient mqttClient,
+      JsonMapper jsonMapper,
+      Clock clock,
+      RandomGenerator simulationRandom) {
+    return new MqttResponsePublisher(
+        mqttClient,
+        new ResponseMessageMapper(jsonMapper, clock, new RandomUuids(simulationRandom)));
+  }
+
+  /** Subscribes in the background, like the connection, so start-up never waits for the broker. */
+  @Bean
+  MqttCommandSubscriber mqttCommandSubscriber(
+      Mqtt5AsyncClient mqttClient,
+      ScenarioConfig scenario,
+      JsonMapper jsonMapper,
+      CommandService commandService) {
+    MqttCommandSubscriber subscriber =
+        new MqttCommandSubscriber(
+            mqttClient,
+            scenario.fleetId(),
+            new CommandMessageMapper(jsonMapper),
+            commandService::submit);
+    subscriber.subscribe();
+    return subscriber;
   }
 }

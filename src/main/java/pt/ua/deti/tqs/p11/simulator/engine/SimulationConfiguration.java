@@ -7,6 +7,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.random.RandomGenerator;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import pt.ua.deti.tqs.p11.simulator.command.CommandService;
+import pt.ua.deti.tqs.p11.simulator.command.ResponsePublisher;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 
@@ -52,5 +54,18 @@ public class SimulationConfiguration {
         engine::tick,
         SimulationRunner.intervalOf(scenario.simulation().emissionIntervalSeconds()),
         scheduler);
+  }
+
+  /**
+   * Gets the same executor as the ticks: commands and ticks then run on one thread, one after
+   * another, so the engine (not thread-safe) is never used by two threads at once.
+   */
+  @Bean
+  CommandService commandService(
+      SimulationEngine engine,
+      ResponsePublisher responsePublisher,
+      Clock clock,
+      ScheduledExecutorService simulationScheduler) {
+    return new CommandService(engine, responsePublisher, clock, simulationScheduler);
   }
 }
