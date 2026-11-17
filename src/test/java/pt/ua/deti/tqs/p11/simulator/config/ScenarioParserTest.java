@@ -119,6 +119,20 @@ class ScenarioParserTest {
   private static Map<String, Object> scenarioWithRates(Object drain, Object charge) {
     return withSimulation(simulationWithRates(drain, charge));
   }
+    private static Map<String, Object> scenarioWithTrips(Object tripProbability, Object rideSpeedKmh) {
+    return withSimulation(
+        obj(
+            "emissionIntervalSeconds",
+            10,
+            "seed",
+            42,
+            "faultProbability",
+            0.01,
+            "tripProbability",
+            tripProbability,
+            "rideSpeedKmh",
+            rideSpeedKmh));
+  }
 
   private static Map<String, Object> scenarioWithFaultProbability(Object probability) {
     return withSimulation(simulation(10, 42, probability));
@@ -334,6 +348,71 @@ class ScenarioParserTest {
         "simulation.chargePercentPerMinute: must be zero or more and finite (was -2.0)");
   }
 
+  // ---- Trips (optional: no trips and 15 km/h by default) ----
+
+  @Test
+  void parse_tripSettingsOmitted_defaultToNoTripsAt15Kmh() {
+    SimulationParams params = parser.parse(validScenario()).simulation();
+
+    assertThat(params.tripProbability()).isZero();
+    assertThat(params.rideSpeedKmh()).isEqualTo(15.0);
+  }
+
+  @Test
+  void parse_tripSettingsGiven_areRead() {
+    SimulationParams params = parser.parse(scenarioWithTrips(0.2, 20)).simulation();
+
+    assertThat(params.tripProbability()).isEqualTo(0.2);
+    assertThat(params.rideSpeedKmh()).isEqualTo(20.0);
+  }
+
+  @Test
+  void parse_oneTripSettingGiven_theOtherKeepsItsDefault() {
+    assertThat(parser.parse(scenarioWithTrips(0.2, null)).simulation().rideSpeedKmh())
+        .isEqualTo(15.0);
+    assertThat(parser.parse(scenarioWithTrips(null, 20)).simulation().tripProbability()).isZero();
+  }
+
+  @ParameterizedTest
+  @ValueSource(doubles = {0, 1})
+  void parse_tripProbabilityAtTheLimits_isAccepted(double probability) {
+    assertThat(parser.parse(scenarioWithTrips(probability, 15)).simulation().tripProbability())
+        .isEqualTo(probability);
+  }
+
+  @ParameterizedTest
+  @ValueSource(doubles = {-0.1, 1.1, Double.NaN})
+  void parse_tripProbabilityOutsideTheRange_isRejectedWithTheFieldPath(double probability) {
+    assertRejectedWith(
+        scenarioWithTrips(probability, 15),
+        "simulation.tripProbability: must be between 0 and 1 (was " + probability + ")");
+  }
+
+  @ParameterizedTest
+  @ValueSource(doubles = {0, -5, Double.NaN, Double.POSITIVE_INFINITY})
+  void parse_invalidRideSpeed_isRejectedWithTheFieldPath(double speed) {
+    assertRejectedWith(
+        scenarioWithTrips(0.2, speed),
+        "simulation.rideSpeedKmh: must be greater than 0 and finite (was " + speed + ")");
+  }
+
+  @Test
+  void parse_tripSettingOfWrongType_isRejectedWithTheFieldPath() {
+    assertRejectedWith(
+        scenarioWithTrips("often", 15),
+        "simulation.tripProbability: must be a number (was 'often')");
+    assertRejectedWith(
+        scenarioWithTrips(0.2, true), "simulation.rideSpeedKmh: must be a number (was true)");
+  }
+
+  @Test
+  void parse_bothTripSettingsInvalid_reportsBothInFileOrder() {
+    assertRejectedWith(
+        scenarioWithTrips(2, 0),
+        "simulation.tripProbability: must be between 0 and 1 (was 2.0)",
+        "simulation.rideSpeedKmh: must be greater than 0 and finite (was 0.0)");
+  }
+  
   // ---- Required fields ----
 
   private static Arguments missing(Map<String, Object> raw, String path) {
