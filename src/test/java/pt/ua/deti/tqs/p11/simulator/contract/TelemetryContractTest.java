@@ -39,20 +39,26 @@ class TelemetryContractTest {
    * The demo scenario (20 vehicles, batteries from 5 to 100 %) with a high fault probability, so
    * messages with and without a fault are both emitted.
    */
-  private static ScenarioConfig scenario(long seed) throws IOException {
+  private static ScenarioConfig scenario(long seed, double drain, double charge)
+      throws IOException {
     try (var input = Files.newInputStream(Path.of("src/main/resources/scenarios/ria-ride.yml"))) {
       ScenarioConfig demo = new ScenarioLoader(new ScenarioParser()).load(input, "ria-ride.yml");
       SimulationParams params = demo.simulation();
       return new ScenarioConfig(
           demo.fleetId(),
-          new SimulationParams(params.emissionIntervalSeconds(), seed, 0.05),
+          new SimulationParams(params.emissionIntervalSeconds(), seed, 0.05, drain, charge),
           demo.hubs(),
           demo.vehicles());
     }
   }
 
-  /** Runs the engine with the real contract mapper, wired as in the application. */
   private static List<String> emittedJson(long seed) throws IOException {
+    return emittedJson(seed, 0, 0);
+  }
+
+  /** Runs the engine with the real contract mapper, wired as in the application. */
+  private static List<String> emittedJson(long seed, double drain, double charge)
+      throws IOException {
     Random random = new Random(seed);
     TelemetryMessageMapper mapper =
         new TelemetryMessageMapper(
@@ -62,7 +68,7 @@ class TelemetryContractTest {
     List<String> out = new ArrayList<>();
     SimulationEngine engine =
         new SimulationEngine(
-            scenario(seed),
+            scenario(seed, drain, charge),
             telemetry -> {
               out.add(mapper.toJson(telemetry));
               return CompletableFuture.completedFuture(null);
@@ -82,6 +88,22 @@ class TelemetryContractTest {
     assertThat(messages).hasSize(20 * TICKS);
     assertThat(messages).anyMatch(m -> m.contains("\"faultCode\":null"));
     assertThat(messages).anyMatch(m -> m.contains("\"faultCode\":\""));
+    assertThat(messages)
+        .allSatisfy(json -> assertThat(ContractSchemas.validateTelemetry(json)).as(json).isEmpty());
+  }
+
+  /**
+   * With a charge rate every parked vehicle charges up to the cap. The scooter starts at 5 % and
+   * gains 1 % per 10 s tick, so it reaches 100 % within the run, and no reading passes it.
+   */
+  @Test
+  void everyEmittedTelemetry_withChargingVehicles_followsTheTelemetrySchema() throws IOException {
+    List<String> messages = emittedJson(7, 0.5, 6.0);
+
+    assertThat(messages).hasSize(20 * TICKS);
+    assertThat(messages)
+        .anyMatch(m ->
+            m.contains("\"vehicleId\":\"scooter-0008\"") && m.contains("\"batteryPercent\":100.0"));
     assertThat(messages)
         .allSatisfy(json -> assertThat(ContractSchemas.validateTelemetry(json)).as(json).isEmpty());
   }
