@@ -23,6 +23,7 @@ import pt.ua.deti.tqs.p11.simulator.config.VehicleConfig;
 import pt.ua.deti.tqs.p11.simulator.config.VehicleType;
 import pt.ua.deti.tqs.p11.simulator.contract.RandomUuids;
 import pt.ua.deti.tqs.p11.simulator.contract.TelemetryMessageMapper;
+import pt.ua.deti.tqs.p11.simulator.event.FaultCatalog;
 import pt.ua.deti.tqs.p11.simulator.telemetry.LockState;
 import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
@@ -143,8 +144,7 @@ class SimulationEngineTest {
 
     assertThat(published)
         .hasSize(3)
-        .allSatisfy(
-            t -> assertThat(t.faultCode()).isPresent().get().isIn(SimulationEngine.FAULT_CODES));
+        .allSatisfy(t -> assertThat(t.faultCode()).isPresent().get().isIn(FaultCatalog.CODES));
   }
 
   @Test

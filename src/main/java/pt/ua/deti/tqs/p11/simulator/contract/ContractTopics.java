@@ -9,6 +9,11 @@ public final class ContractTopics {
     return vehicle(fleetId, vehicleId) + "/telemetry";
   }
 
+  /** Where the simulator reports what happened once to one vehicle. */
+  public static String events(String fleetId, String vehicleId) {
+    return vehicle(fleetId, vehicleId) + "/events";
+  }
+
   /** Where the simulator answers the commands sent to one vehicle. */
   public static String responses(String fleetId, String vehicleId) {
     return vehicle(fleetId, vehicleId) + "/responses";

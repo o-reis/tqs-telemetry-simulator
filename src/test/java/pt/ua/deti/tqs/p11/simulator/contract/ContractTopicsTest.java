@@ -12,6 +12,12 @@ class ContractTopicsTest {
   }
 
   @Test
+  void events_areSentOnTheVehicleEventsTopic() {
+    assertThat(ContractTopics.events("fleet-01", "bike-0042"))
+        .isEqualTo("fleet/fleet-01/vehicles/bike-0042/events");
+  }
+
+  @Test
   void responses_areSentOnTheVehicleResponsesTopic() {
     assertThat(ContractTopics.responses("fleet-01", "bike-0042"))
         .isEqualTo("fleet/fleet-01/vehicles/bike-0042/responses");

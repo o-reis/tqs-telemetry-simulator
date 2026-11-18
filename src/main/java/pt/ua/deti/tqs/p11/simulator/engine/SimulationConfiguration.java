@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import pt.ua.deti.tqs.p11.simulator.command.CommandService;
 import pt.ua.deti.tqs.p11.simulator.command.ResponsePublisher;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
+import pt.ua.deti.tqs.p11.simulator.event.EventPublisher;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 
 /**
@@ -35,8 +36,11 @@ public class SimulationConfiguration {
 
   @Bean
   SimulationEngine simulationEngine(
-      ScenarioConfig scenario, TelemetryPublisher publisher, RandomGenerator simulationRandom) {
-    return new SimulationEngine(scenario, publisher, simulationRandom);
+      ScenarioConfig scenario,
+      TelemetryPublisher publisher,
+      EventPublisher eventPublisher,
+      RandomGenerator simulationRandom) {
+    return new SimulationEngine(scenario, publisher, eventPublisher, simulationRandom);
   }
 
   /** One thread, so ticks never overlap and the order of random draws is always the same. */

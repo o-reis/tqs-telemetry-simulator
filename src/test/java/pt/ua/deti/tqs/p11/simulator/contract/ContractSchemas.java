@@ -40,6 +40,11 @@ public final class ContractSchemas {
     return validate("response.schema.json", json);
   }
 
+  /** Returns the validation errors of an event message; empty when it follows the contract. */
+  public static List<Error> validateEvent(String json) {
+    return validate("event.schema.json", json);
+  }
+
   private static List<Error> validate(String schemaFile, String json) {
     Schema schema = REGISTRY.getSchema(SchemaLocation.of(ID_PREFIX + schemaFile));
     return schema.validate(

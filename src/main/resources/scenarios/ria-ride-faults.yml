@@ -1,0 +1,72 @@
+# Ria Ride faults demo: the same 6 hubs and 20 vehicles as ria-ride.yml, with no random faults and
+# three scripted ones, so a platform can test its maintenance flow with the same result every time.
+# Run it with SIMULATOR_SCENARIO_FILE=classpath:scenarios/ria-ride-faults.yml
+# All names are fictional and the coordinates are approximate.
+fleetId: fleet-01
+
+simulation:
+  emissionIntervalSeconds: 10   # one reading per vehicle every 10 s
+  seed: 42                      # the same seed gives the same run
+  faultProbability: 0           # 0: no random faults. A random fault never clears, and a scripted
+                                # one waits until the vehicle is healthy, so keep this 0 here
+  drainPercentPerMinute: 0.5    # battery lost per minute while riding (optional, default 0)
+  chargePercentPerMinute: 0     # battery gained per minute parked at a hub (optional, default 0);
+                                # 0 keeps the 19/20/21 % batteries below on the BR1 boundary
+
+hubs:
+  - id: hub-01
+    name: Estação de Aveiro
+    position: { lat: 40.6443, lon: -8.6455 }
+  - id: hub-02
+    name: Fórum Aveiro
+    position: { lat: 40.6412, lon: -8.6501 }
+  - id: hub-03
+    name: Canal Central
+    position: { lat: 40.6405, lon: -8.6538 }
+  - id: hub-04
+    name: Universidade
+    position: { lat: 40.6304, lon: -8.6577 }
+  - id: hub-05
+    name: Hotel Ria Azul
+    position: { lat: 40.6421, lon: -8.6524 }
+  - id: hub-06
+    name: Hotel Laguna
+    position: { lat: 40.6385, lon: -8.6489 }
+
+# Hotel hubs hold more vehicles: that is where visitors start.
+# Batteries of 19, 20 and 21 % sit around the minimum battery to book (rule BR1).
+vehicles:
+  # hub-05 Hotel Ria Azul
+  - { id: bike-0001,    type: E_BIKE,    hub: hub-05, battery: 92 }
+  - { id: bike-0002,    type: E_BIKE,    hub: hub-05, battery: 88 }
+  - { id: scooter-0001, type: E_SCOOTER, hub: hub-05, battery: 75 }
+  - { id: bike-0003,    type: E_BIKE,    hub: hub-05, battery: 64 }
+  # hub-06 Hotel Laguna
+  - { id: bike-0004,    type: E_BIKE,    hub: hub-06, battery: 95 }
+  - { id: bike-0005,    type: E_BIKE,    hub: hub-06, battery: 81 }
+  - { id: scooter-0002, type: E_SCOOTER, hub: hub-06, battery: 70 }
+  - { id: scooter-0003, type: E_SCOOTER, hub: hub-06, battery: 21 }  # just above the minimum
+  # hub-01 Estação de Aveiro
+  - { id: bike-0006,    type: E_BIKE,    hub: hub-01, battery: 100 }
+  - { id: scooter-0004, type: E_SCOOTER, hub: hub-01, battery: 20 }  # exactly the minimum
+  - { id: bike-0007,    type: E_BIKE,    hub: hub-01, battery: 55 }
+  # hub-02 Fórum Aveiro
+  - { id: bike-0008,    type: E_BIKE,    hub: hub-02, battery: 78 }
+  - { id: scooter-0005, type: E_SCOOTER, hub: hub-02, battery: 19 }  # just below the minimum
+  - { id: scooter-0006, type: E_SCOOTER, hub: hub-02, battery: 12 }
+  # hub-03 Canal Central
+  - { id: bike-0009,    type: E_BIKE,    hub: hub-03, battery: 90 }
+  - { id: bike-0010,    type: E_BIKE,    hub: hub-03, battery: 47 }
+  - { id: scooter-0007, type: E_SCOOTER, hub: hub-03, battery: 33 }
+  # hub-04 Universidade
+  - { id: bike-0011,    type: E_BIKE,    hub: hub-04, battery: 85 }
+  - { id: bike-0012,    type: E_BIKE,    hub: hub-04, battery: 60 }
+  - { id: scooter-0008, type: E_SCOOTER, hub: hub-04, battery: 5 }
+
+# Faults raised at set moments (simulated seconds since the start). Each one is reported in the
+# telemetry (faultCode) and as a FAULT_RAISED event; one with clearAfterSeconds is reported as a
+# FAULT_CLEARED event that long after it was raised and the vehicle is healthy again.
+faults:
+  - { vehicle: bike-0001,    code: BRAKE_WEAR,       atSeconds: 30, clearAfterSeconds: 120 }
+  - { vehicle: scooter-0001, code: BATTERY_OVERHEAT, atSeconds: 60 }   # stays for the whole run
+  - { vehicle: bike-0002,    code: FLAT_TIRE,        atSeconds: 90, clearAfterSeconds: 60 }

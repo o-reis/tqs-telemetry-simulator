@@ -1,14 +1,21 @@
 package pt.ua.deti.tqs.p11.simulator.engine;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 import pt.ua.deti.tqs.p11.simulator.config.HubConfig;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
+import pt.ua.deti.tqs.p11.simulator.config.ScriptedFault;
 import pt.ua.deti.tqs.p11.simulator.config.SimulationParams;
 import pt.ua.deti.tqs.p11.simulator.engine.BatteryModel.Activity;
+import pt.ua.deti.tqs.p11.simulator.event.EventPublisher;
+import pt.ua.deti.tqs.p11.simulator.event.FaultCatalog;
+import pt.ua.deti.tqs.p11.simulator.event.FaultEvent;
+import pt.ua.deti.tqs.p11.simulator.event.FaultEventType;
 import pt.ua.deti.tqs.p11.simulator.telemetry.LockState;
 import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
@@ -27,7 +34,10 @@ import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
  * #lock}, {@link #ping}) must all be called from the same thread.
  *
  * <p>Faults: on each tick a healthy vehicle gets a fault with the scenario's {@code
- * faultProbability}; a fault, once raised, stays.
+ * faultProbability}; a fault, once raised, stays. The scenario can also script faults ({@link
+ * ScriptedFault}): raised at a set time, optionally cleared after a set time. A scripted fault due
+ * while the vehicle already has one waits until the vehicle is healthy. Every fault raised or
+ * cleared is also reported as an event through the {@link EventPublisher}.
  *
  * <p>Automatic trips: a vehicle parked and locked at a hub, without a fault, starts a trip with the
  * scenario's {@code tripProbability} after each reading. Its destination is another hub, at a
@@ -51,9 +61,6 @@ import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
  */
 public class SimulationEngine {
 
-  /** Fault codes this simulator raises (the contract lets each simulator define its own). */
-  static final List<String> FAULT_CODES = List.of("BRAKE_WEAR", "FLAT_TIRE", "BATTERY_OVERHEAT");
-
   private static final double STOPPED_SPEED_KMH = 0.0;
 
   private final String fleetId;
@@ -63,17 +70,30 @@ public class SimulationEngine {
   private final double intervalSeconds;
   private final BatteryModel batteryModel;
   private final TelemetryPublisher publisher;
+  private final EventPublisher eventPublisher;
   private final RandomGenerator random;
   private final List<HubConfig> hubs;
   private final List<SimulatedVehicle> vehicles;
   private final Map<String, SimulatedVehicle> vehiclesById;
+
+  /** Simulated time since the start of the run: the number of ticks done times the interval. */
+  private double elapsedSeconds;
+
+  /** An engine that publishes telemetry only: its faults are not reported as events. */
+  public SimulationEngine(
+      ScenarioConfig scenario, TelemetryPublisher publisher, RandomGenerator random) {
+    this(scenario, publisher, event -> CompletableFuture.completedFuture(null), random);
+  }
 
   /**
    * @param random the run's only source of randomness; share the same instance with anything else
    *     that must be reproducible (message ids)
    */
   public SimulationEngine(
-      ScenarioConfig scenario, TelemetryPublisher publisher, RandomGenerator random) {
+      ScenarioConfig scenario,
+      TelemetryPublisher publisher,
+      EventPublisher eventPublisher,
+      RandomGenerator random) {
     this.fleetId = scenario.fleetId();
     SimulationParams params = scenario.simulation();
     this.faultProbability = params.faultProbability();
@@ -83,6 +103,7 @@ public class SimulationEngine {
     this.batteryModel =
         new BatteryModel(params.drainPercentPerMinute(), params.chargePercentPerMinute());
     this.publisher = publisher;
+    this.eventPublisher = eventPublisher;
     this.random = random;
     this.hubs = List.copyOf(scenario.hubs());
     // Hub ids are unique and every vehicle's hub exists: ScenarioParser checks both.
@@ -96,15 +117,25 @@ public class SimulationEngine {
     // Vehicle ids are unique (ScenarioParser checks it).
     this.vehiclesById = new LinkedHashMap<>();
     vehicles.forEach(v -> vehiclesById.put(v.id, v));
+    for (ScriptedFault scripted : scenario.faults()) {
+      SimulatedVehicle vehicle = vehiclesById.get(scripted.vehicleId());
+      if (vehicle == null) {
+        throw new IllegalArgumentException(
+            "Scripted fault for an unknown vehicle: " + scripted.vehicleId());
+      }
+      vehicle.scriptedFaults.add(scripted);
+    }
   }
 
   /** Publishes one reading per vehicle, then advances every vehicle by one interval. */
   public void tick() {
     for (SimulatedVehicle vehicle : vehicles) {
+      applyScriptedFaults(vehicle);
       maybeRaiseFault(vehicle);
       publisher.publish(telemetryOf(vehicle));
       advance(vehicle);
     }
+    elapsedSeconds += intervalSeconds;
   }
 
   /**
@@ -171,11 +202,64 @@ public class SimulationEngine {
         : CommandOutcome.rejected(CommandOutcome.UNKNOWN_VEHICLE);
   }
 
+  /**
+   * Clears the vehicle's scripted fault when its time is up, then raises the next scripted fault
+   * that is due, if the vehicle is healthy. Draws no random number, so scripted faults never move
+   * the seeded sequence of the random ones.
+   */
+  private void applyScriptedFaults(SimulatedVehicle vehicle) {
+    if (vehicle.faultCode != null
+        && vehicle.faultClearsAtSeconds != null
+        && elapsedSeconds >= vehicle.faultClearsAtSeconds) {
+      clearFault(vehicle);
+    }
+    if (vehicle.faultCode != null) {
+      return;
+    }
+    // In file order: a fault that came due while the vehicle was faulty waits for its turn.
+    for (ScriptedFault scripted : vehicle.scriptedFaults) {
+      if (scripted.atSeconds() <= elapsedSeconds) {
+        vehicle.scriptedFaults.remove(scripted);
+        raiseFault(vehicle, scripted.faultCode());
+        scripted
+            .clearAfterSeconds()
+            .ifPresent(after -> vehicle.faultClearsAtSeconds = elapsedSeconds + after);
+        return;
+      }
+    }
+  }
+
   private void maybeRaiseFault(SimulatedVehicle vehicle) {
     // nextDouble() is in [0, 1): a probability of 0 never raises a fault, 1 always does.
     if (vehicle.faultCode == null && random.nextDouble() < faultProbability) {
-      vehicle.faultCode = FAULT_CODES.get(random.nextInt(FAULT_CODES.size()));
+      raiseFault(vehicle, FaultCatalog.CODES.get(random.nextInt(FaultCatalog.CODES.size())));
     }
+  }
+
+  /** The vehicle starts reporting the fault, and the platform is told the moment it appeared. */
+  private void raiseFault(SimulatedVehicle vehicle, String faultCode) {
+    vehicle.faultCode = faultCode;
+    eventPublisher.publish(
+        new FaultEvent(
+            fleetId,
+            vehicle.id,
+            FaultEventType.FAULT_RAISED,
+            faultCode,
+            FaultCatalog.severityOf(faultCode)));
+  }
+
+  /** The vehicle reports healthy again, and the platform is told the moment the fault went. */
+  private void clearFault(SimulatedVehicle vehicle) {
+    String faultCode = vehicle.faultCode;
+    vehicle.faultCode = null;
+    vehicle.faultClearsAtSeconds = null;
+    eventPublisher.publish(
+        new FaultEvent(
+            fleetId,
+            vehicle.id,
+            FaultEventType.FAULT_CLEARED,
+            faultCode,
+            FaultCatalog.severityOf(faultCode)));
   }
 
   /** Moves the vehicle one interval forward: battery, then trip progress or a new trip. */
@@ -295,6 +379,13 @@ public class SimulationEngine {
     private Position hubPosition;
     private double batteryPercent;
     private String faultCode;
+
+    /** When a scripted fault goes away, or {@code null} if the fault stays (or there is none). */
+    private Double faultClearsAtSeconds;
+
+    /** Scripted faults not raised yet, in file order. */
+    private final List<ScriptedFault> scriptedFaults = new ArrayList<>();
+
     private VehicleState state = VehicleState.PARKED;
 
     /** The trip in progress, or {@code null} unless riding. */
