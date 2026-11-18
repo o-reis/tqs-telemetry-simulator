@@ -1,6 +1,8 @@
-# Build and test on every push and pull request; publish the image from main.
+# Build and test on every push and pull request; publish the image from main and from release tags.
 # Same level as the platform's backend CI: build, unit and integration tests, coverage check,
 # formatting check, mutation testing (pull requests) and SonarCloud with the quality gate.
+# A tag vMAJOR.MINOR.PATCH is a simulator release (README, section Releases): it publishes the
+# versioned image and creates the GitHub release with its CHANGELOG.md entry.
 name: CI
 
 on:
@@ -62,6 +64,19 @@ jobs:
           java-version: '21'
           cache: maven
 
+      # A release must carry the version in pom.xml and have its changelog entry, checked before
+      # anything is built, so a wrong tag never publishes an image.
+      - name: Check the release tag
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          pom_version="$(./mvnw -B -q help:evaluate -Dexpression=project.version -DforceStdout)"
+          if [ "$version" != "$pom_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the version in pom.xml ($pom_version)"
+            exit 1
+          fi
+          .github/scripts/release-notes.sh "$version" > /dev/null
+
       # verify runs the unit and integration tests, the JaCoCo check and the Spotless check
       - name: Build and test
         run: ./mvnw -B verify
@@ -83,7 +98,8 @@ jobs:
           (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
         run: ./mvnw -B sonar:sonar -Dsonar.qualitygate.wait=true
 
-  # Builds the image on every run; pushes it to GitHub Container Registry only from main.
+  # Builds the image on every run; pushes it to GitHub Container Registry only from main and from
+  # release tags.
   image:
     needs: [contract, contract-tests, simulator]
     runs-on: ubuntu-latest
@@ -91,7 +107,9 @@ jobs:
       contents: read
       packages: write
     env:
-      PUBLISH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      PUBLISH: >-
+        ${{ github.event_name == 'push' &&
+        (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
     steps:
       - uses: actions/checkout@v7
 
@@ -104,13 +122,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Tags: latest and the commit SHA on main; the branch name elsewhere (built, not pushed).
+      # Tags: latest and the commit SHA on main; on a release tag v1.2.3, 1.2.3, 1.2, the SHA and
+      # latest (added for semver tags by the action's default latest=auto, not for pre-releases);
+      # the branch name elsewhere (built, not pushed).
       - id: meta
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha
             type=ref,event=branch
             type=ref,event=pr
@@ -123,3 +145,21 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # On a release tag, after the image is published: the GitHub release, with the changelog entry.
+  release:
+    needs: image
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          .github/scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "Simulator $GITHUB_REF_NAME" \
+            --notes-file release-notes.md
