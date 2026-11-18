@@ -58,7 +58,28 @@ A scenario with a single hub has no trips: a vehicle unlocked there waits at its
 
 **Faults.** A healthy vehicle gets a fault with `simulation.faultProbability` per tick; once raised,
 a fault stays for the rest of the run. A faulty vehicle does not start automatic trips and cannot
-be unlocked.
+be unlocked. The scenario can also script faults (`faults[]`, see below): a fault raised at a set
+time, optionally cleared after a set time. With no scripted fault and a `faultProbability` of 0,
+no fault ever happens.
+
+**Fault events.** Each time a fault appears or goes away, the simulator publishes an `event` message
+(QoS 1, not retained) on `fleet/{fleetId}/vehicles/{vehicleId}/events`, with `eventType`
+`FAULT_RAISED` or `FAULT_CLEARED`, the `faultCode` and a `severity`. The vehicle's telemetry keeps
+carrying the current `faultCode`, so a lost event is still caught by the next reading. A fault is
+reported once when it appears, not on every tick while it stays.
+
+| Code | Severity |
+| --- | --- |
+| `BRAKE_WEAR` | `WARNING` |
+| `FLAT_TIRE` | `WARNING` |
+| `BATTERY_OVERHEAT` | `CRITICAL` |
+
+**Scripted faults.** They make a test deterministic and draw no random number, so they never move
+the seeded sequence of the random faults. Times are simulated seconds since the start of the run
+and are applied at the first tick at or after the time. A scripted fault that comes due while the
+vehicle already has a fault waits until the vehicle is healthy (clear the first one with
+`clearAfterSeconds`), so use a `faultProbability` of 0 in a scenario that relies on them: a random
+fault never clears and would block them.
 
 Fault codes this simulator raises (the contract lets each simulator define its own):
 
@@ -132,6 +153,7 @@ breaks a rule, the simulator does not start and the log lists every problem with
 | `simulation.rideSpeedKmh` | Optional, default 15. Speed of a vehicle during a trip, greater than 0 |
 | `hubs[]` | `id`, `name`, `position` (`lat` -90 to 90, `lon` -180 to 180) |
 | `vehicles[]` | `id`, `type` (`E_BIKE` or `E_SCOOTER`), `hub` (an id from `hubs`), `battery` (0 to 100) |
+| `faults[]` | Optional. Scripted faults, each with `vehicle` (an id from `vehicles`), `code` (one of the fault codes above), `atSeconds` (zero or more) and optionally `clearAfterSeconds` (greater than 0; without it the fault stays for the rest of the run) |
 
 Identifiers match `[A-Za-z0-9_-]{1,64}` and are unique within hubs and within vehicles. The vehicle
 type is internal to the simulator and never appears in the contract messages.
@@ -145,6 +167,7 @@ Select one with `SIMULATOR_SCENARIO_FILE=classpath:scenarios/<file>`.
 | `ria-ride.yml` (default) | 6 hubs in Aveiro and 20 parked vehicles, with batteries of 19, 20 and 21 % around the minimum battery to book (rule BR1) and rare faults. Vehicles move only when the platform unlocks them |
 | `ria-ride-charging.yml` | The same fleet with a fast charge rate, to watch the batteries rise to 100 % |
 | `ria-ride-trips.yml` | The same fleet riding between hubs on its own, to watch vehicles move on a map: the first one leaves within seconds and reaches another hub in about 2 minutes |
+| `ria-ride-faults.yml` | The same fleet with no random faults and three scripted ones (brake wear, a battery overheat that stays, a flat tyre), to test maintenance flows: each appears in the telemetry and as a `FAULT_RAISED` event, and two are cleared with a `FAULT_CLEARED` event |
 | `minimal.yml` | One hub and one vehicle, for quick local runs |
 
 ## Build and test
