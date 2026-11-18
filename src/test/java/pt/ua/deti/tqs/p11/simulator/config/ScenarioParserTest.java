@@ -613,4 +613,125 @@ class ScenarioParserTest {
         withVehicles(List.of(vehicle("bike-0001", type, "hub-01", 85))),
         "vehicles[0].type: unknown type '" + type + "' (known: E_BIKE, E_SCOOTER)");
   }
+
+  // ---- Generated vehicles (optional): a large fleet from a count ----
+
+  private static Map<String, Object> withGenerated(Object vehicles, Object generated) {
+    Map<String, Object> raw = withVehicles(vehicles);
+    raw.put("generatedVehicles", generated);
+    return raw;
+  }
+
+  private static Map<String, Object> generated(Object count, Object idPrefix) {
+    return obj("count", count, "idPrefix", idPrefix);
+  }
+
+  @Test
+  void parse_generatedVehiclesWithoutAList_givesTheGeneratedFleet() {
+    ScenarioConfig config = parser.parse(withGenerated(null, generated(3, "load")));
+
+    assertThat(config.vehicles())
+        .isEqualTo(GeneratedFleet.vehicles(3, "load", config.hubs()))
+        .extracting(VehicleConfig::id)
+        .containsExactly("load-0001", "load-0002", "load-0003");
+  }
+
+  @Test
+  void parse_generatedVehiclesWithoutAPrefix_useTheDefaultPrefix() {
+    ScenarioConfig config = parser.parse(withGenerated(null, generated(2, null)));
+
+    assertThat(config.vehicles())
+        .extracting(VehicleConfig::id)
+        .containsExactly("vehicle-0001", "vehicle-0002");
+  }
+
+  @Test
+  void parse_listedAndGeneratedVehicles_listedComeFirst() {
+    ScenarioConfig config =
+        parser.parse(withGenerated(List.of(validVehicle()), generated(2, "load")));
+
+    assertThat(config.vehicles())
+        .extracting(VehicleConfig::id)
+        .containsExactly("bike-0001", "load-0001", "load-0002");
+  }
+
+  @Test
+  void parse_scriptedFaultForAGeneratedVehicle_isAccepted() {
+    Map<String, Object> raw = withGenerated(null, generated(2, "load"));
+    raw.put("faults", List.of(obj("vehicle", "load-0002", "code", "FLAT_TIRE", "atSeconds", 30)));
+
+    assertThat(parser.parse(raw).faults())
+        .extracting(ScriptedFault::vehicleId)
+        .contains("load-0002");
+  }
+
+  @Test
+  void parse_neitherListedNorGeneratedVehicles_isRejectedAsBefore() {
+    assertRejectedWith(withVehicles(null), "vehicles: is required");
+  }
+
+  @Test
+  void parse_generatedVehiclesNotAnObject_isRejected() {
+    assertRejectedWith(
+        withGenerated(null, 1000), "generatedVehicles: must be an object (was 1000)");
+  }
+
+  @Test
+  void parse_generatedVehiclesWithoutACount_isRejected() {
+    assertRejectedWith(
+        withGenerated(null, generated(null, "load")), "generatedVehicles.count: is required");
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 100_000})
+  void parse_generatedCountAtTheLimits_isAccepted(int count) {
+    assertThat(parser.parse(withGenerated(null, generated(count, "load"))).vehicles())
+        .hasSize(count);
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {0, -1, 100_001})
+  void parse_generatedCountOutsideTheLimits_isRejected(int count) {
+    assertRejectedWith(
+        withGenerated(null, generated(count, "load")),
+        "generatedVehicles.count: must be between 1 and 100000 (was " + count + ")");
+  }
+
+  @Test
+  void parse_generatedCountNotAWholeNumber_isRejected() {
+    assertRejectedWith(
+        withGenerated(null, generated(2.5, "load")),
+        "generatedVehicles.count: must be a whole number (was 2.5)");
+  }
+
+  @Test
+  void parse_generatedPrefixNotAnIdentifier_isRejected() {
+    assertRejectedWith(
+        withGenerated(null, generated(3, "load/x")),
+        "generatedVehicles.idPrefix: must match " + ID_RULE + " (was 'load/x')");
+  }
+
+  @Test
+  void parse_generatedPrefixAtItsMaximumLength_isAccepted() {
+    String longest = "p".repeat(59);
+
+    assertThat(parser.parse(withGenerated(null, generated(1000, longest))).vehicles())
+        .hasSize(1000);
+  }
+
+  @Test
+  void parse_generatedPrefixTooLongForTheIds_isRejected() {
+    assertRejectedWith(
+        withGenerated(null, generated(1000, "p".repeat(60))),
+        "generatedVehicles.idPrefix: must have at most 59 characters for 1000 vehicles (was 60)");
+  }
+
+  @Test
+  void parse_generatedIdAlreadyListed_isRejected() {
+    Map<String, Object> listed = vehicle("load-0002", "E_BIKE", "hub-01", 50);
+
+    assertRejectedWith(
+        withGenerated(List.of(listed), generated(3, "load")),
+        "generatedVehicles: id 'load-0002' is already used in vehicles[0]");
+  }
 }
