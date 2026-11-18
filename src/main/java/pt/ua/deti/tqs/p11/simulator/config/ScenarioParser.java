@@ -32,11 +32,12 @@ public class ScenarioParser {
     List<HubConfig> hubs = parseHubs(raw, problems);
     // Hub references are checked only against a valid hub list. Otherwise one broken hub would
     // also be reported as "unknown hub" in every vehicle that uses it.
+    List<HubConfig> validHubs = problems.size() == problemsBeforeHubs ? hubs : null;
     List<String> knownHubs =
-        problems.size() == problemsBeforeHubs ? hubs.stream().map(HubConfig::id).toList() : null;
+        validHubs == null ? null : validHubs.stream().map(HubConfig::id).toList();
 
     int problemsBeforeVehicles = problems.size();
-    List<VehicleConfig> vehicles = parseVehicles(raw, knownHubs, problems);
+    List<VehicleConfig> vehicles = parseAllVehicles(raw, knownHubs, validHubs, problems);
     // Same reason as for the hubs: check vehicle references only against a valid vehicle list.
     List<String> knownVehicles =
         problems.size() == problemsBeforeVehicles
@@ -168,6 +169,25 @@ public class ScenarioParser {
     return problems.size() == before ? new Position(lat, lon) : null;
   }
 
+  /**
+   * The listed vehicles, then the generated ones. {@code vehicles} may be left out when the
+   * scenario has {@code generatedVehicles}.
+   *
+   * @param validHubs the hubs, or {@code null} if the hub list has problems
+   */
+  private static List<VehicleConfig> parseAllVehicles(
+      Map<?, ?> raw, List<String> knownHubs, List<HubConfig> validHubs, List<String> problems) {
+    boolean generates = raw.get("generatedVehicles") != null;
+    List<VehicleConfig> vehicles =
+        generates && raw.get("vehicles") == null
+            ? new ArrayList<>()
+            : parseVehicles(raw, knownHubs, problems);
+    if (generates) {
+      vehicles.addAll(parseGeneratedVehicles(raw, vehicles, validHubs, problems));
+    }
+    return vehicles;
+  }
+
   private static List<VehicleConfig> parseVehicles(
       Map<?, ?> raw, List<String> knownHubs, List<String> problems) {
     List<VehicleConfig> vehicles = new ArrayList<>();
@@ -204,6 +224,73 @@ public class ScenarioParser {
       }
     }
     return vehicles;
+  }
+
+  /**
+   * Reads {@code generatedVehicles} ({@code count}, optional {@code idPrefix}) and builds the fleet
+   * with {@link GeneratedFleet}.
+   *
+   * @param listed the listed vehicles, whose ids the generated ones must not reuse
+   * @param validHubs the hubs, or {@code null} if the hub list has problems (already reported)
+   */
+  private static List<VehicleConfig> parseGeneratedVehicles(
+      Map<?, ?> raw, List<VehicleConfig> listed, List<HubConfig> validHubs, List<String> problems) {
+    Map<?, ?> generated = asObject(raw.get("generatedVehicles"), "generatedVehicles", problems);
+    if (generated == null) {
+      return List.of();
+    }
+    int before = problems.size();
+    Long count = wholeNumber(generated, "count", "generatedVehicles.count", problems);
+    if (count != null && !(count >= 1 && count <= GeneratedFleet.MAX_COUNT)) {
+      problems.add(
+          "generatedVehicles.count: must be between 1 and "
+              + GeneratedFleet.MAX_COUNT
+              + " (was "
+              + count
+              + ")");
+    }
+    String prefix =
+        generated.get("idPrefix") == null
+            ? GeneratedFleet.DEFAULT_ID_PREFIX
+            : identifier(generated, "idPrefix", "generatedVehicles.idPrefix", problems);
+    if (problems.size() != before) {
+      return List.of();
+    }
+    int size = count.intValue();
+    int maxPrefix = GeneratedFleet.maxPrefixLength(size);
+    if (prefix.length() > maxPrefix) {
+      problems.add(
+          "generatedVehicles.idPrefix: must have at most "
+              + maxPrefix
+              + " characters for "
+              + size
+              + " vehicles (was "
+              + prefix.length()
+              + ")");
+      return List.of();
+    }
+    if (validHubs == null) {
+      return List.of();
+    }
+    List<VehicleConfig> fleet = GeneratedFleet.vehicles(size, prefix, validHubs);
+    Map<String, Integer> listedIndexById = new HashMap<>();
+    for (int i = 0; i < listed.size(); i++) {
+      listedIndexById.putIfAbsent(listed.get(i).id(), i);
+    }
+    // The first clash is enough: with a shared prefix, every later id would clash too.
+    for (VehicleConfig vehicle : fleet) {
+      Integer index = listedIndexById.get(vehicle.id());
+      if (index != null) {
+        problems.add(
+            "generatedVehicles: id '"
+                + vehicle.id()
+                + "' is already used in vehicles["
+                + index
+                + "]");
+        return List.of();
+      }
+    }
+    return fleet;
   }
 
   /** The {@code faults} section is optional: absent or empty means no scripted faults. */

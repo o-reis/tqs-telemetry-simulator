@@ -15,6 +15,8 @@ import pt.ua.deti.tqs.p11.simulator.contract.RandomUuids;
 import pt.ua.deti.tqs.p11.simulator.contract.ResponseMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.contract.TelemetryMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.event.EventPublisher;
+import pt.ua.deti.tqs.p11.simulator.rate.EmissionRateMeter;
+import pt.ua.deti.tqs.p11.simulator.rate.MeteredTelemetryPublisher;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -32,17 +34,21 @@ public class MqttConfiguration {
 
   /**
    * The mapper takes the run's clock and seeded generator (SimulationConfiguration), so timestamps
-   * and message ids are reproducible too.
+   * and message ids are reproducible too. Every reading is counted on its way to the broker, for
+   * the effective emission rate.
    */
   @Bean
   TelemetryPublisher telemetryPublisher(
       Mqtt5AsyncClient mqttClient,
       JsonMapper jsonMapper,
       Clock clock,
-      RandomGenerator simulationRandom) {
-    return new MqttTelemetryPublisher(
-        mqttClient,
-        new TelemetryMessageMapper(jsonMapper, clock, new RandomUuids(simulationRandom)));
+      RandomGenerator simulationRandom,
+      EmissionRateMeter emissionRateMeter) {
+    return new MeteredTelemetryPublisher(
+        new MqttTelemetryPublisher(
+            mqttClient,
+            new TelemetryMessageMapper(jsonMapper, clock, new RandomUuids(simulationRandom))),
+        emissionRateMeter);
   }
 
   /** Like the telemetry: the run's clock and seeded generator, so message ids are reproducible. */
