@@ -1,0 +1,45 @@
+# Template for your own scenario: copy this file, change it, and mount it into the container
+# (see docker-compose.yml next to this file). Every field is described in the README, section
+# "Scenario file". If a value breaks a rule, the simulator does not start and logs every problem.
+# All names are fictional and the coordinates are approximate.
+
+# Used in every topic: fleet/{fleetId}/vehicles/{vehicleId}/...
+fleetId: my-fleet
+
+simulation:
+  emissionIntervalSeconds: 10   # seconds between two readings of a vehicle, greater than 0
+  seed: 7                       # whole number; the same seed gives the same run
+  faultProbability: 0           # chance of a random fault per reading, 0 to 1. Keep 0 when you
+                                # rely on the scripted faults below: a random fault never clears
+  drainPercentPerMinute: 1      # optional, default 0: battery lost per minute while riding
+  chargePercentPerMinute: 0.5   # optional, default 0: battery gained per minute parked at a hub
+  tripProbability: 0.05         # optional, default 0: chance per reading that a parked vehicle
+                                # starts a trip to another hub on its own
+  rideSpeedKmh: 15              # optional, default 15: speed during a trip
+
+# Places where vehicles park. lat -90 to 90, lon -180 to 180.
+hubs:
+  - id: hub-north
+    name: North Square
+    position: { lat: 40.6443, lon: -8.6455 }
+  - id: hub-south
+    name: South Park
+    position: { lat: 40.6304, lon: -8.6577 }
+
+# Vehicles listed one by one. type is E_BIKE or E_SCOOTER, battery 0 to 100.
+vehicles:
+  - { id: bike-0001,    type: E_BIKE,    hub: hub-north, battery: 80 }
+  - { id: scooter-0001, type: E_SCOOTER, hub: hub-south, battery: 15 }
+
+# Optional: many vehicles without listing them. Creates vehicle-0001, vehicle-0002, ... spread
+# over the hubs in turn. Listed vehicles come first. Remove this section if you do not need it.
+generatedVehicles:
+  count: 4
+  idPrefix: vehicle
+
+# Optional: faults at set moments, to test a maintenance flow with the same result every time.
+# Times are simulated seconds since the start of the run. code is BRAKE_WEAR, FLAT_TIRE or
+# BATTERY_OVERHEAT. Without clearAfterSeconds the fault stays for the rest of the run.
+faults:
+  - { vehicle: bike-0001,    code: FLAT_TIRE,        atSeconds: 30, clearAfterSeconds: 60 }
+  - { vehicle: vehicle-0001, code: BATTERY_OVERHEAT, atSeconds: 60 }

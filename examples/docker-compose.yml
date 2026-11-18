@@ -1,0 +1,29 @@
+# Runs the simulator with an MQTT broker, so you can try it without any other service.
+# Start with: docker compose up        Stop with: docker compose down
+# Your platform connects to the broker at localhost:1883 (or broker:1883 from another container
+# on this Compose network).
+
+services:
+  broker:
+    # Same broker version the simulator's integration tests use.
+    image: eclipse-mosquitto:2.0.22
+    # The image ships this file: listen on 1883 and accept clients without a password.
+    # Fine for local tests; do not expose such a broker on a public network.
+    command: ["mosquitto", "-c", "/mosquitto-no-auth.conf"]
+    ports:
+      - "1883:1883"
+
+  simulator:
+    # Pin a release (for example 1.0.0) so an update never changes your tests by surprise.
+    image: ghcr.io/o-reis/tqs-telemetry-simulator:${SIMULATOR_VERSION:-latest}
+    environment:
+      SIMULATOR_MQTT_HOST: broker
+      # A scenario shipped in the image (see the README), or your own file mounted below.
+      SIMULATOR_SCENARIO_FILE: ${SIMULATOR_SCENARIO_FILE:-classpath:scenarios/ria-ride.yml}
+    # Your own scenario: put scenario.yml next to this file, uncomment the two lines below and
+    # start with SIMULATOR_SCENARIO_FILE=file:/config/scenario.yml docker compose up
+    # volumes:
+    #   - ./scenario.yml:/config/scenario.yml:ro
+    depends_on:
+      - broker
+    restart: unless-stopped
