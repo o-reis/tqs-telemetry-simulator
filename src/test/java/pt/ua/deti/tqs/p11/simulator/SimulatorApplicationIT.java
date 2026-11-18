@@ -10,6 +10,9 @@ import pt.ua.deti.tqs.p11.simulator.command.CommandService;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
 import pt.ua.deti.tqs.p11.simulator.engine.SimulationRunner;
 import pt.ua.deti.tqs.p11.simulator.mqtt.MqttCommandSubscriber;
+import pt.ua.deti.tqs.p11.simulator.rate.MeteredTelemetryPublisher;
+import pt.ua.deti.tqs.p11.simulator.rate.RateReporter;
+import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 
 @SpringBootTest
 class SimulatorApplicationIT {
@@ -38,5 +41,12 @@ class SimulatorApplicationIT {
   void applicationContext_listensForThePlatformsCommands() {
     assertThat(context.getBeansOfType(CommandService.class)).hasSize(1);
     assertThat(context.getBeansOfType(MqttCommandSubscriber.class)).hasSize(1);
+  }
+
+  @Test
+  void applicationContext_measuresAndReportsTheEmissionRate() {
+    assertThat(context.getBean(TelemetryPublisher.class))
+        .isInstanceOf(MeteredTelemetryPublisher.class);
+    assertThat(context.getBean(RateReporter.class).isRunning()).isTrue();
   }
 }

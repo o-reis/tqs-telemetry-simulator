@@ -1,6 +1,7 @@
 package pt.ua.deti.tqs.p11.simulator.rate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -14,6 +15,13 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import pt.ua.deti.tqs.p11.simulator.config.GeneratedFleet;
+import pt.ua.deti.tqs.p11.simulator.config.HubConfig;
+import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
+import pt.ua.deti.tqs.p11.simulator.config.SimulationParams;
+import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 
 /** No real time: the clock is moved by hand. */
 class EmissionRateMeterTest {
@@ -96,6 +104,26 @@ class EmissionRateMeterTest {
     RateReport total = meter.totalReport();
     assertThat(total.sent()).isEqualTo(40_000);
     assertThat(total.acknowledged()).isEqualTo(40_000);
+  }
+
+  private static ScenarioConfig scenario(int vehicles, double intervalSeconds) {
+    List<HubConfig> hubs =
+        List.of(new HubConfig("hub-01", "Hub one", new Position(40.6443, -8.6455)));
+    return new ScenarioConfig(
+        "fleet-01",
+        new SimulationParams(intervalSeconds, 1, 0),
+        hubs,
+        GeneratedFleet.vehicles(vehicles, "load", hubs));
+  }
+
+  @ParameterizedTest(name = "{0} vehicles every {1} s: {2} readings/s")
+  @CsvSource({"1000, 1, 1000", "20, 10, 2", "100, 0.1, 1000", "1, 60, 0.016666666666666666"})
+  void forScenario_targetIsTheVehiclesDividedByTheInterval(
+      int vehicles, double interval, double target) {
+    EmissionRateMeter forScenario =
+        EmissionRateMeter.forScenario(Clock.systemUTC(), scenario(vehicles, interval));
+
+    assertThat(forScenario.targetPerSecond()).isCloseTo(target, within(1e-9));
   }
 
   /** A clock the test moves by hand. */
