@@ -21,6 +21,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import pt.ua.deti.tqs.p11.simulator.contract.ContractSchemas;
 import pt.ua.deti.tqs.p11.simulator.contract.TelemetryMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.engine.SimulationEngine;
+import pt.ua.deti.tqs.p11.simulator.rate.EmissionRateMeter;
 import pt.ua.deti.tqs.p11.simulator.telemetry.LockState;
 import pt.ua.deti.tqs.p11.simulator.telemetry.VehicleTelemetry;
 import tools.jackson.databind.json.JsonMapper;
@@ -179,5 +180,28 @@ class ExampleScenariosTest {
 
     assertThat(config.hubs()).hasSize(1);
     assertThat(config.vehicles()).hasSize(1);
+  }
+
+  // ---- The load test fleet (high-rate mode) ----
+
+  /** SLO2 (Product Specification): telemetry lag under 5 s at 10 readings/s. */
+  private static final double SLO2_READINGS_PER_SECOND = 10;
+
+  @Test
+  void loadTest_targetsAtLeastTenTimesTheTelemetrySloRate() throws IOException {
+    ScenarioConfig config = load(DIR.resolve("load-test.yml"));
+
+    double target = EmissionRateMeter.forScenario(Clock.systemUTC(), config).targetPerSecond();
+
+    assertThat(config.vehicles()).hasSize(1000);
+    assertThat(target).isGreaterThanOrEqualTo(10 * SLO2_READINGS_PER_SECOND);
+  }
+
+  @Test
+  void loadTest_usesTheHubsOfRiaRide() throws IOException {
+    ScenarioConfig demo = load(DIR.resolve("ria-ride.yml"));
+    ScenarioConfig loadTest = load(DIR.resolve("load-test.yml"));
+
+    assertThat(loadTest.hubs()).isEqualTo(demo.hubs());
   }
 }
