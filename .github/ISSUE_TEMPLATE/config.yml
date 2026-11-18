@@ -1,0 +1,9 @@
+# Every issue goes through a template, so we get the version and the scenario we need to reproduce it.
+blank_issues_enabled: false
+contact_links:
+  - name: Interface contract (topics, messages, schemas)
+    url: https://github.com/o-reis/tqs-telemetry-simulator/blob/main/contract/README.md
+    about: Read the contract first; many questions about messages are answered there.
+  - name: Troubleshooting
+    url: https://github.com/o-reis/tqs-telemetry-simulator/blob/main/README.md#troubleshooting
+    about: Common start-up and connection problems and how to fix them.

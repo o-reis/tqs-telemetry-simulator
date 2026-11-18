@@ -1,0 +1,57 @@
+name: Contract change request
+description: Ask for a new or changed topic, message, field or command in the interface contract.
+title: "[contract] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The contract is shared by every team, so changes follow its [versioning and change policy](https://github.com/o-reis/tqs-telemetry-simulator/blob/main/contract/README.md#versioning-and-change-policy):
+        each change is discussed here, announced to all teams before it is released, and recorded in the contract changelog.
+  - type: input
+    id: team
+    attributes:
+      label: Your team
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part of the contract
+      multiple: true
+      options:
+        - Telemetry
+        - Events
+        - Commands
+        - Responses
+        - Envelope
+        - Topics or QoS
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+      description: The field, value or topic you want, with an example message if you can.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it is needed
+      description: What your platform cannot do with the current contract.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Expected version bump
+      description: See the table in the change policy. If unsure, choose "Not sure".
+      options:
+        - MINOR (adds something optional; existing consumers keep working)
+        - MAJOR (removes, renames or makes something required; consumers must change)
+        - PATCH (documentation or examples only)
+        - Not sure
+    validations:
+      required: true

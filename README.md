@@ -4,6 +4,36 @@ A separate service that simulates a fleet of light vehicles, publishes their tel
 accepts lock, unlock and ping commands, following the interface contract in
 [contract/](contract/README.md). Any platform that implements the contract can consume it.
 
+## Quick start
+
+You need only Docker with Docker Compose. In an empty folder (Bash, or Git Bash on Windows):
+
+```bash
+curl -O https://raw.githubusercontent.com/o-reis/tqs-telemetry-simulator/main/examples/docker-compose.yml
+docker compose up -d
+docker compose exec broker mosquitto_sub -v -t 'fleet/#'
+```
+
+The last command prints every message the simulator publishes: one telemetry message per vehicle
+every 10 s, from the default scenario (20 vehicles at 6 hubs). Stop it with Ctrl+C, and stop the
+simulator and the broker with `docker compose down`.
+
+Your platform connects to the broker at `localhost:1883`, or `broker:1883` from a container on the
+same Compose network. To run another scenario shipped in the image, set `SIMULATOR_SCENARIO_FILE`
+(see [Example scenarios](#example-scenarios)), for example
+`SIMULATOR_SCENARIO_FILE=classpath:scenarios/ria-ride-trips.yml docker compose up -d`, or put the
+line `SIMULATOR_SCENARIO_FILE=classpath:scenarios/ria-ride-trips.yml` in a `.env` file next to
+`docker-compose.yml`.
+
+**Your own scenario.** Download the commented template
+[examples/scenario.yml](examples/scenario.yml) next to `docker-compose.yml`, change it, uncomment
+the `volumes` lines in `docker-compose.yml` and start with
+`SIMULATOR_SCENARIO_FILE=file:/config/scenario.yml`.
+
+**Pin a version.** The compose file uses the `latest` image. For tests that must not change by
+surprise, set `SIMULATOR_VERSION` to a release, for example `SIMULATOR_VERSION=1.0.0` (see
+[Releases](#releases)).
+
 ## Configuration
 
 The broker connection is set with environment variables:
@@ -218,5 +248,67 @@ npm ci --prefix contract && npm run validate --prefix contract   # contract sche
 
 ## Docker image
 
-Every merge to `main` publishes `ghcr.io/o-reis/tqs-telemetry-simulator` with the tags `latest`
-and the commit SHA. To build it locally: `docker build -t telemetry-simulator .`
+The image is public: `ghcr.io/o-reis/tqs-telemetry-simulator`, no login needed.
+
+| Tag | Points to |
+| --- | --- |
+| `1.0.0` (one per release) | That release; never changes |
+| `1.0` | The newest patch release of 1.0 |
+| `latest` | The newest build of `main` (each release is also built from `main`) |
+| `sha-…` | One commit |
+
+To build it locally: `docker build -t telemetry-simulator .`
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The log stops at `Started SimulatorApplication` and no message arrives | The simulator cannot reach the broker. It keeps retrying without logging each attempt. Check `SIMULATOR_MQTT_HOST`: inside a container, use the broker's service name (`broker`), not `localhost`. Check that the broker is running: `docker compose ps` |
+| `Invalid scenario in ... (N problems):` and the simulator stops | Each line after it gives a field path and the rule it breaks, for example `vehicles[0].battery: must be between 0 and 100 (was 101.0)`. Fix the file and start again |
+| `Invalid scenario in file:/config/scenario.yml (1 problem): - file not found or not readable` | The file is not mounted. Put `scenario.yml` next to `docker-compose.yml`, uncomment the `volumes` lines and keep the `file:` prefix in `SIMULATOR_SCENARIO_FILE` |
+| `Bind for 0.0.0.0:1883 failed: port is already allocated` | Another broker runs on your machine. Stop it, or change the port mapping to `"1884:1883"` and connect to `localhost:1884` |
+| Messages arrive, but not on the topics you subscribed to | Topics use the scenario's `fleetId`: `fleet/{fleetId}/vehicles/{vehicleId}/...`. Subscribe to `fleet/#` to see them all |
+| Two simulators on the same broker publish only now and then | Both use the same `SIMULATOR_MQTT_CLIENT_ID`; the broker drops one when the other connects, and they keep taking turns. Give each one its own id, or leave it unset to generate one |
+| Telemetry arrives right after you subscribe, older than expected | Telemetry is retained: the broker sends the last message of each vehicle to every new subscriber. Use the message `timestamp` |
+
+## Releases
+
+The simulator has its own version, `MAJOR.MINOR.PATCH` ([semantic versioning](https://semver.org/)),
+separate from the contract version. Each release says in [CHANGELOG.md](CHANGELOG.md) which
+contract version it implements, so a simulator fix does not need a contract change.
+
+| Simulator change | Version bump |
+| --- | --- |
+| Implements a new contract MAJOR version, or removes a configuration field or variable | **MAJOR** |
+| Implements a new contract MINOR version, or adds a feature or an optional configuration field | **MINOR** |
+| Bug fix with no change to behaviour that is documented | **PATCH** |
+
+To release (maintainers):
+
+1. In a pull request, set `<version>` in `pom.xml` to the new version and move the
+   `[Unreleased]` entries of `CHANGELOG.md` to a `## [X.Y.Z] - date` section, with the line
+   "Implements contract X.Y.Z.". Preview the release notes with
+   `.github/scripts/release-notes.sh X.Y.Z`.
+2. After the pull request is merged, tag the merge commit on `main` and push the tag:
+   `git tag vX.Y.Z && git push origin vX.Y.Z`. A contract release keeps its own tag,
+   `contract-vX.Y.Z` (see the contract's change policy).
+3. CI checks that the tag matches `pom.xml` and that the changelog entry exists, runs the full
+   build, publishes the image with the tags `X.Y.Z`, `X.Y` and `latest`, and creates the GitHub
+   release with the changelog entry as its notes. If a check fails, nothing is published: delete the
+   tag, fix it in a new pull request and tag again.
+4. Announce the release to the other teams, as the contract's change policy asks for contract
+   changes.
+
+## Reporting issues and requesting changes
+
+Use [GitHub Issues](https://github.com/o-reis/tqs-telemetry-simulator/issues/new/choose) and pick a
+template:
+
+- **Bug report**: the simulator does something different from this README or the contract.
+- **Contract change request**: a new or changed topic, message, field or command. It follows the
+  contract's [change policy](contract/README.md#versioning-and-change-policy): discussed in the
+  issue and announced to every team before it is released.
+- **Question**: how to run, configure or integrate with the simulator.
+
+Give the image tag you run and your scenario, so we can reproduce the problem. Never paste
+passwords, tokens or personal data.
