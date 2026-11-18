@@ -31,13 +31,18 @@ class ExampleScenariosTest {
 
   private static final Path DIR = Path.of("src", "main", "resources", "scenarios");
 
+  /** Starting point for other teams' own scenarios, mounted into the container (README). */
+  private static final Path TEMPLATE = Path.of("examples", "scenario.yml");
+
   private final ScenarioLoader loader = new ScenarioLoader(new ScenarioParser());
   private final TelemetryMessageMapper mapper =
       new TelemetryMessageMapper(JsonMapper.builder().build(), Clock.systemUTC());
 
   static Stream<Path> exampleFiles() throws IOException {
     try (Stream<Path> files = Files.list(DIR)) {
-      return files.filter(f -> f.toString().endsWith(".yml")).sorted().toList().stream();
+      return Stream.concat(
+          files.filter(f -> f.toString().endsWith(".yml")).sorted().toList().stream(),
+          Stream.of(TEMPLATE));
     }
   }
 
@@ -172,6 +177,16 @@ class ExampleScenariosTest {
         .extracting(HubConfig::name)
         .filteredOn(name -> name.startsWith("Hotel"))
         .hasSizeGreaterThanOrEqualTo(2);
+  }
+
+  /** A template is only useful if it shows the optional sections, not only the required ones. */
+  @Test
+  void template_showsScriptedFaultsAndGeneratedVehicles() throws IOException {
+    ScenarioConfig config = load(TEMPLATE);
+
+    assertThat(config.faults()).isNotEmpty();
+    assertThat(config.vehicles()).extracting(VehicleConfig::id).contains("vehicle-0001");
+    assertThat(config.simulation().tripProbability()).isPositive();
   }
 
   @Test
