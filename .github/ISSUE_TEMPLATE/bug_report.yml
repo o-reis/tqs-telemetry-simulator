@@ -1,0 +1,62 @@
+name: Bug report
+description: The simulator does something different from the README or the contract.
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please check the [troubleshooting](https://github.com/o-reis/tqs-telemetry-simulator/blob/main/README.md#troubleshooting) section first.
+        Do not paste passwords, tokens or personal data.
+  - type: input
+    id: version
+    attributes:
+      label: Simulator version
+      description: The image tag you run (for example 1.0.0). With latest, give the sha-... tag or the date you pulled it.
+    validations:
+      required: true
+  - type: input
+    id: team
+    attributes:
+      label: Your team
+      description: So we know who to contact.
+    validations:
+      required: true
+  - type: textarea
+    id: scenario
+    attributes:
+      label: Scenario
+      description: The scenario file name (for example ria-ride.yml), or your own scenario file.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. docker compose up with ...
+        2. Send the command ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: Link the README or contract section that describes it, if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: Include the MQTT messages you received, if any.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Simulator log
+      description: Output of `docker compose logs simulator`.
+      render: text

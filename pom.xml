@@ -13,7 +13,7 @@
 
   <groupId>pt.ua.deti.tqs</groupId>
   <artifactId>telemetry-simulator</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>1.0.0</version>
   <name>telemetry-simulator</name>
   <description>Fleet telemetry simulator that publishes over MQTT following the contract in contract/</description>
 
