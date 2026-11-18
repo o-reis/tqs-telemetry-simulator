@@ -4,12 +4,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.LongAdder;
+import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
 
 /**
  * Counts the readings published during a run. The counters can be updated from any thread: the
  * broker's acknowledgements arrive on the MQTT client's threads.
  */
 public class EmissionRateMeter {
+
   private final Clock clock;
   private final double targetPerSecond;
   private final Instant start;
@@ -33,6 +35,16 @@ public class EmissionRateMeter {
     this.targetPerSecond = targetPerSecond;
     this.start = clock.instant();
     this.periodStart = start;
+  }
+
+  /** A meter whose target is the scenario's rate: one reading per vehicle every interval. */
+  public static EmissionRateMeter forScenario(Clock clock, ScenarioConfig scenario) {
+    return new EmissionRateMeter(
+        clock, scenario.vehicles().size() / scenario.simulation().emissionIntervalSeconds());
+  }
+
+  public double targetPerSecond() {
+    return targetPerSecond;
   }
 
   public void recordSent() {
