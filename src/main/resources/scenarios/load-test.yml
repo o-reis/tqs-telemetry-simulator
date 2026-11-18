@@ -1,0 +1,42 @@
+# Ria Ride load test: the 6 hubs of ria-ride.yml and 1000 generated vehicles, one reading per vehicle
+# every second, so the simulator emits 1000 readings/s, 100 times the telemetry SLO (SLO2: lag under
+# 5 s at 10 readings/s). The log reports the effective rate every 10 s and a summary when it stops.
+# Run it with SIMULATOR_SCENARIO_FILE=classpath:scenarios/load-test.yml
+# To change the load, copy this file and change generatedVehicles.count (fleet size) and
+# simulation.emissionIntervalSeconds (seconds between two readings of a vehicle).
+# All names are fictional and the coordinates are approximate.
+fleetId: fleet-01
+
+simulation:
+  emissionIntervalSeconds: 1    # one reading per vehicle every second
+  seed: 42                      # the same seed gives the same run
+  faultProbability: 0           # no faults: the load is telemetry only
+  drainPercentPerMinute: 0.5    # battery lost per minute while riding
+  chargePercentPerMinute: 0.5   # battery gained per minute while parked at a hub
+  tripProbability: 0.002        # about 2 vehicles leave a hub every second, so positions change
+  rideSpeedKmh: 15
+
+hubs:
+  - id: hub-01
+    name: Estação de Aveiro
+    position: { lat: 40.6443, lon: -8.6455 }
+  - id: hub-02
+    name: Fórum Aveiro
+    position: { lat: 40.6412, lon: -8.6501 }
+  - id: hub-03
+    name: Canal Central
+    position: { lat: 40.6405, lon: -8.6538 }
+  - id: hub-04
+    name: Universidade
+    position: { lat: 40.6304, lon: -8.6577 }
+  - id: hub-05
+    name: Hotel Ria Azul
+    position: { lat: 40.6421, lon: -8.6524 }
+  - id: hub-06
+    name: Hotel Laguna
+    position: { lat: 40.6385, lon: -8.6489 }
+
+# load-0001 to load-1000, spread over the hubs in turn, with batteries from 20 to 100 %.
+generatedVehicles:
+  count: 1000
+  idPrefix: load
