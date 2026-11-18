@@ -133,7 +133,40 @@ To try it by hand with Mosquitto's command-line tools, with the simulator runnin
 ```bash
 mosquitto_sub -h localhost -v -t 'fleet/fleet-01/vehicles/bike-0001/#'
 mosquitto_pub -h localhost -t fleet/fleet-01/vehicles/bike-0001/commands/unlock \
-  -m '{"schemaVersion":"1.0.0","messageId":"c3a1f8d0-6a24-4f67-b1d2-9e3e4a5b6c03","type":"command","timestamp":"2026-11-17T17:00:00Z","fleetId":"fleet-01","vehicleId":"bike-0001","data":{"commandId":"e5b2a9c1-0d3f-4a8e-8b77-1c2d3e4f5a04"}}'
+  -m '{"schemaVersion":"1.0.0","messageId":"c3a1f8d0-6a24-4f67-b1d2-9e3e4a5b6c03","type":"command","timestamp":"2026-11-17T17:00:00Z","fleetId":"fleet-01","vehicleId":"bike-0001","data":{"commandId":"e5b2a9c1-0d3f-4a8e-8b77-1c2d3e4f5a04"}}'  
+```
+
+## High-rate mode (load tests)
+
+The simulator can emit at high rates with large fleets, so a platform can check its telemetry SLO
+under load (SLO2: telemetry lag under 5 s at 10 readings/s).
+
+- **Through configuration only.** The rate is the number of vehicles divided by
+  `simulation.emissionIntervalSeconds`. A large fleet comes from `generatedVehicles.count`, so no
+  long vehicle list is needed. `load-test.yml` gives 1000 vehicles at one reading per second; for
+  another load, copy it, change those two values and select the file with
+  `SIMULATOR_SCENARIO_FILE` (for example `file:/config/load.yml` mounted into the container).
+- **Effective rate in the log.** At start-up the simulator logs the target rate; then every 10 s
+  the effective rate, counting the readings the broker acknowledged (QoS 1); and when it stops, a
+  summary of the whole run:
+
+  ```
+  Target rate: 1000.0 readings/s, a report every 10 s
+  Effective rate: 999.6 readings/s (target 1000.0): 9997 sent, 9996 acknowledged, 0 failed in 10.0 s
+  Run summary: Effective rate: 999.4 readings/s (target 1000.0): ...
+  ```
+
+  A period under 95 % of the target is logged as a warning: the configured rate is not sustained,
+  usually because the broker or the network cannot keep up.
+- **Tested.** `HighRateIT` runs `load-test.yml` in real time for 6 s through a real Mosquitto
+  broker and requires no failed reading and at least the SLO rate, both as acknowledged by the
+  broker and as received by a platform client. On a developer laptop it measured 999.2 readings/s
+  acknowledged and 999.7 readings/s received, with 0 failed.
+
+```bash
+docker run --rm -e SIMULATOR_MQTT_HOST=broker \
+  -e SIMULATOR_SCENARIO_FILE=classpath:scenarios/load-test.yml \
+  ghcr.io/o-reis/tqs-telemetry-simulator:latest
 ```
 
 ## Scenario file
@@ -154,6 +187,7 @@ breaks a rule, the simulator does not start and the log lists every problem with
 | `hubs[]` | `id`, `name`, `position` (`lat` -90 to 90, `lon` -180 to 180) |
 | `vehicles[]` | `id`, `type` (`E_BIKE` or `E_SCOOTER`), `hub` (an id from `hubs`), `battery` (0 to 100) |
 | `faults[]` | Optional. Scripted faults, each with `vehicle` (an id from `vehicles`), `code` (one of the fault codes above), `atSeconds` (zero or more) and optionally `clearAfterSeconds` (greater than 0; without it the fault stays for the rest of the run) |
+| `generatedVehicles` | Optional. `count` (1 to 100000) and `idPrefix` (optional, default `vehicle`): generates that many vehicles, `{idPrefix}-0001` onwards, spread over the hubs in turn, alternating `E_BIKE` and `E_SCOOTER`, with batteries from 20 to 100 %. Deterministic (no random numbers). With it, `vehicles` becomes optional; both can be used together, the listed vehicles first |
 
 Identifiers match `[A-Za-z0-9_-]{1,64}` and are unique within hubs and within vehicles. The vehicle
 type is internal to the simulator and never appears in the contract messages.
@@ -169,6 +203,7 @@ Select one with `SIMULATOR_SCENARIO_FILE=classpath:scenarios/<file>`.
 | `ria-ride-trips.yml` | The same fleet riding between hubs on its own, to watch vehicles move on a map: the first one leaves within seconds and reaches another hub in about 2 minutes |
 | `ria-ride-faults.yml` | The same fleet with no random faults and three scripted ones (brake wear, a battery overheat that stays, a flat tyre), to test maintenance flows: each appears in the telemetry and as a `FAULT_RAISED` event, and two are cleared with a `FAULT_CLEARED` event |
 | `minimal.yml` | One hub and one vehicle, for quick local runs |
+| `load-test.yml` | High-rate mode for load tests: the Ria Ride hubs and 1000 generated vehicles, one reading per second each (1000 readings/s) |
 
 ## Build and test
 
