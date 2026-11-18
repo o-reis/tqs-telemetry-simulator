@@ -4,7 +4,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.OptionalDouble;
 import java.util.regex.Pattern;
+import pt.ua.deti.tqs.p11.simulator.event.FaultCatalog;
 import pt.ua.deti.tqs.p11.simulator.telemetry.Position;
 
 /**
@@ -33,12 +35,20 @@ public class ScenarioParser {
     List<String> knownHubs =
         problems.size() == problemsBeforeHubs ? hubs.stream().map(HubConfig::id).toList() : null;
 
+    int problemsBeforeVehicles = problems.size();
     List<VehicleConfig> vehicles = parseVehicles(raw, knownHubs, problems);
+    // Same reason as for the hubs: check vehicle references only against a valid vehicle list.
+    List<String> knownVehicles =
+        problems.size() == problemsBeforeVehicles
+            ? vehicles.stream().map(VehicleConfig::id).toList()
+            : null;
+
+    List<ScriptedFault> faults = parseFaults(raw, knownVehicles, problems);
 
     if (!problems.isEmpty()) {
       throw new InvalidScenarioException(problems);
     }
-    return new ScenarioConfig(fleetId, simulation, hubs, vehicles);
+    return new ScenarioConfig(fleetId, simulation, hubs, vehicles, faults);
   }
 
   // The parse methods below return null (or leave the entry out) when they record a problem.
@@ -194,6 +204,74 @@ public class ScenarioParser {
       }
     }
     return vehicles;
+  }
+
+  /** The {@code faults} section is optional: absent or empty means no scripted faults. */
+  private static List<ScriptedFault> parseFaults(
+      Map<?, ?> raw, List<String> knownVehicles, List<String> problems) {
+    List<ScriptedFault> faults = new ArrayList<>();
+    Object value = raw.get("faults");
+    if (value == null) {
+      return faults;
+    }
+    if (!(value instanceof List<?> rawFaults)) {
+      problems.add("faults: must be a list (was " + describe(value) + ")");
+      return faults;
+    }
+    for (int i = 0; i < rawFaults.size(); i++) {
+      String path = "faults[" + i + "]";
+      Map<?, ?> fault = asObject(rawFaults.get(i), path, problems);
+      if (fault == null) {
+        continue;
+      }
+      int before = problems.size();
+      String vehicleId = identifier(fault, "vehicle", path + ".vehicle", problems);
+      if (vehicleId != null && knownVehicles != null && !knownVehicles.contains(vehicleId)) {
+        problems.add(
+            path
+                + ".vehicle: unknown vehicle '"
+                + vehicleId
+                + "' (known: "
+                + String.join(", ", knownVehicles)
+                + ")");
+      }
+      String code = text(fault, "code", path + ".code", problems);
+      if (code != null && !FaultCatalog.isKnown(code)) {
+        problems.add(
+            path
+                + ".code: unknown fault code '"
+                + code
+                + "' (known: "
+                + String.join(", ", FaultCatalog.CODES)
+                + ")");
+      }
+      Double at = number(fault, "atSeconds", path + ".atSeconds", problems);
+      // Written so that NaN is rejected too, and the upper bound rejects infinity.
+      if (at != null && !(at >= 0 && at <= Double.MAX_VALUE)) {
+        problems.add(path + ".atSeconds: must be zero or more and finite (was " + at + ")");
+      }
+      OptionalDouble clearAfter = optionalClearAfter(fault, path + ".clearAfterSeconds", problems);
+      if (problems.size() == before) {
+        faults.add(new ScriptedFault(vehicleId, code, at, clearAfter));
+      }
+    }
+    return faults;
+  }
+
+  /** Reads {@code clearAfterSeconds}: absent means the fault stays for the rest of the run. */
+  private static OptionalDouble optionalClearAfter(
+      Map<?, ?> fault, String path, List<String> problems) {
+    if (fault.get("clearAfterSeconds") == null) {
+      return OptionalDouble.empty();
+    }
+    Double seconds = number(fault, "clearAfterSeconds", path, problems);
+    if (seconds == null) {
+      return OptionalDouble.empty();
+    }
+    if (!(seconds > 0 && seconds <= Double.MAX_VALUE)) {
+      problems.add(path + ": must be greater than 0 and finite (was " + seconds + ")");
+    }
+    return OptionalDouble.of(seconds);
   }
 
   private static VehicleType vehicleType(String name, String path, List<String> problems) {

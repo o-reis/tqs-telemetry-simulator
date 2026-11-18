@@ -10,9 +10,11 @@ import pt.ua.deti.tqs.p11.simulator.command.CommandService;
 import pt.ua.deti.tqs.p11.simulator.command.ResponsePublisher;
 import pt.ua.deti.tqs.p11.simulator.config.ScenarioConfig;
 import pt.ua.deti.tqs.p11.simulator.contract.CommandMessageMapper;
+import pt.ua.deti.tqs.p11.simulator.contract.EventMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.contract.RandomUuids;
 import pt.ua.deti.tqs.p11.simulator.contract.ResponseMessageMapper;
 import pt.ua.deti.tqs.p11.simulator.contract.TelemetryMessageMapper;
+import pt.ua.deti.tqs.p11.simulator.event.EventPublisher;
 import pt.ua.deti.tqs.p11.simulator.telemetry.TelemetryPublisher;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -41,6 +43,17 @@ public class MqttConfiguration {
     return new MqttTelemetryPublisher(
         mqttClient,
         new TelemetryMessageMapper(jsonMapper, clock, new RandomUuids(simulationRandom)));
+  }
+
+  /** Like the telemetry: the run's clock and seeded generator, so message ids are reproducible. */
+  @Bean
+  EventPublisher eventPublisher(
+      Mqtt5AsyncClient mqttClient,
+      JsonMapper jsonMapper,
+      Clock clock,
+      RandomGenerator simulationRandom) {
+    return new MqttEventPublisher(
+        mqttClient, new EventMessageMapper(jsonMapper, clock, new RandomUuids(simulationRandom)));
   }
 
   /** Like the telemetry: the run's clock and seeded generator, so message ids are reproducible. */
